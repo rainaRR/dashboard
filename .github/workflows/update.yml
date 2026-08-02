@@ -12,6 +12,7 @@ permissions:
 jobs:
   update:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -20,9 +21,10 @@ jobs:
           python-version: "3.11"
 
       - name: 라이브러리 설치
-        run: pip install finance-datareader yfinance
+        run: pip install finance-datareader yfinance pykrx
 
       - name: 시세 가져오기
+        timeout-minutes: 10
         run: python fetch_data.py
 
       - name: 결과 저장
