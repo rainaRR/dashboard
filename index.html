@@ -188,7 +188,20 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
   border-radius:10px; padding:9px 12px; font-size:12.5px; margin-bottom:12px; }
 .reload { border:1px solid #e0dcd4; background:#fff; color:#54504a; border-radius:8px;
   padding:5px 11px; font-size:12px; cursor:pointer; font-family:inherit; }
+
+/* ---- 차트 ---- */
+.chartbox { position:relative; height:260px; margin-top:4px; }
+@media (max-width:640px){ .chartbox { height:210px; } }
+.segbar { display:flex; gap:5px; margin-left:auto; }
+.seg { font-size:11.5px; padding:4px 10px; border-radius:7px; border:1px solid #e0dcd4;
+  background:#faf9f7; color:#7a756d; cursor:pointer; font-family:inherit; }
+.seg.on { background:#1c1b19; color:#fff; border-color:#1c1b19; }
+.legend { display:flex; gap:14px; flex-wrap:wrap; font-size:11.5px; color:#6f6a63; margin-top:9px; }
+.legend i { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; vertical-align:-1px; }
+.nodata { text-align:center; padding:38px 16px; color:#a8a29a; font-size:13px;
+  background:#faf9f7; border:1px dashed #e0dcd4; border-radius:11px; }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js"></script>
 </head>
 <body>
 
@@ -202,6 +215,7 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
 
 <nav class="nav" id="nav">
   <button data-v="market" class="on">시장</button>
+  <button data-v="chart">차트</button>
   <button data-v="paper">신문 브리핑</button>
 </nav>
 
@@ -210,6 +224,40 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
     <div class="foot" id="idxfoot"></div></div>
   <div class="card"><h2>공포 · 탐욕 게이지 <span class="tag">VIX 기반 자체 산출</span></h2>
     <div class="gauge" id="fg"><div class="loading">불러오는 중…</div></div></div>
+</section>
+
+<section class="view" id="v-chart">
+  <div class="card">
+    <h2>지수 추이
+      <span class="segbar" id="periodbar">
+        <button class="seg" data-p="30">1개월</button>
+        <button class="seg on" data-p="90">3개월</button>
+        <button class="seg" data-p="260">1년</button>
+      </span>
+    </h2>
+    <div id="histwrap"><div class="chartbox"><canvas id="histChart"></canvas></div>
+      <div class="legend">
+        <span><i style="background:#c0392b"></i>코스피</span>
+        <span><i style="background:#1c6fd0"></i>코스닥</span>
+        <span style="color:#a8a29a">두 지수를 각자 첫날 기준 100으로 맞춰 겹쳐 그렸습니다</span>
+      </div></div>
+  </div>
+
+  <div class="card">
+    <h2>외국인 · 기관 매매 흐름 <span class="tag">최근 20거래일</span>
+      <span class="segbar" id="marketbar">
+        <button class="seg on" data-m="KOSPI">코스피</button>
+        <button class="seg" data-m="KOSDAQ">코스닥</button>
+      </span>
+    </h2>
+    <div id="invwrap"><div class="chartbox"><canvas id="invChart"></canvas></div>
+      <div class="legend">
+        <span><i style="background:#c0392b"></i>외국인</span>
+        <span><i style="background:#e0a33e"></i>기관</span>
+        <span><i style="background:#5a9bd8"></i>개인</span>
+        <span style="color:#a8a29a">막대가 0 위면 순매수, 아래면 순매도입니다 (단위: 억원)</span>
+      </div></div>
+  </div>
 </section>
 
 <section class="view" id="v-paper">
@@ -246,6 +294,10 @@ document.querySelectorAll("#nav button").forEach(b=>{
     document.querySelectorAll("#nav button").forEach(x=>x.classList.toggle("on",x===b));
     document.querySelectorAll(".view").forEach(v=>v.classList.toggle("on",v.id==="v-"+b.dataset.v));
     LS.set("view",b.dataset.v);
+    // 차트는 화면에 보일 때 그려야 크기가 맞습니다
+    if(b.dataset.v==="chart" && typeof drawHistory==="function" && MARKET){
+      requestAnimationFrame(()=>{ drawHistory(); drawInvestor(); });
+    }
   };
   if(b.dataset.v===LS.get("view","market")) b.click();
 });
@@ -351,6 +403,110 @@ function renderPaper(){
 document.getElementById("wprev").onclick=()=>{weekStart.setDate(weekStart.getDate()-7);renderCal();};
 document.getElementById("wnext").onclick=()=>{weekStart.setDate(weekStart.getDate()+7);renderCal();};
 
+
+/* ============ 차트 ============ */
+let histChart=null, invChart=null, period=LS.get("period",90), invMarket=LS.get("invmkt","KOSPI");
+
+const FONT = { family: getComputedStyle(document.body).fontFamily, size: 11 };
+function baseOpts(extra){
+  return Object.assign({
+    responsive:true, maintainAspectRatio:false,
+    interaction:{ mode:"index", intersect:false },
+    plugins:{
+      legend:{ display:false },
+      tooltip:{
+        backgroundColor:"#1c1b19", padding:9, cornerRadius:7,
+        titleFont:FONT, bodyFont:FONT, displayColors:true, boxWidth:8, boxHeight:8
+      }
+    },
+    scales:{
+      x:{ grid:{ display:false }, ticks:{ font:FONT, color:"#a8a29a", maxRotation:0, autoSkipPadding:22 } },
+      y:{ grid:{ color:"#f0ede7" }, border:{ display:false }, ticks:{ font:FONT, color:"#a8a29a" } }
+    }
+  }, extra||{});
+}
+function shortDate(s){ const p=String(s).split("-"); return p.length===3 ? `${+p[1]}/${+p[2]}` : s; }
+
+function drawHistory(){
+  const H = MARKET && MARKET.history;
+  const wrap = document.getElementById("histwrap");
+  if(!H || !Object.keys(H).length){
+    wrap.innerHTML = '<div class="nodata">아직 차트 데이터가 없습니다.<br>깃허브 자동 실행이 한 번 돌면 채워집니다.</div>';
+    return;
+  }
+  const ks=H["KOSPI"], kq=H["KOSDAQ"];
+  const src = ks || kq;
+  if(!src){ wrap.innerHTML='<div class="nodata">지수 데이터를 찾지 못했습니다.</div>'; return; }
+  const n = Math.min(period, src.d.length);
+  const cut = a => a.slice(-n);
+  // 첫날을 100으로 맞춰 두 지수를 겹쳐 봅니다
+  const norm = arr => { const b=arr[0]; return b ? arr.map(v=>+(v/b*100).toFixed(2)) : arr; };
+  const labels = cut(src.d).map(shortDate);
+  const sets=[];
+  if(ks) sets.push({ label:"코스피", data:norm(cut(ks.v)), raw:cut(ks.v),
+    borderColor:"#c0392b", backgroundColor:"#c0392b", borderWidth:2, pointRadius:0, tension:.15 });
+  if(kq) sets.push({ label:"코스닥", data:norm(cut(kq.v)), raw:cut(kq.v),
+    borderColor:"#1c6fd0", backgroundColor:"#1c6fd0", borderWidth:2, pointRadius:0, tension:.15 });
+
+  if(histChart) histChart.destroy();
+  histChart = new Chart(document.getElementById("histChart"), {
+    type:"line", data:{ labels, datasets:sets },
+    options: baseOpts({ plugins:{ legend:{display:false}, tooltip:{
+      backgroundColor:"#1c1b19", padding:9, cornerRadius:7, titleFont:FONT, bodyFont:FONT,
+      callbacks:{ label: c => {
+        const real = c.dataset.raw ? c.dataset.raw[c.dataIndex] : null;
+        return ` ${c.dataset.label}  ${real!==null?real.toLocaleString("ko-KR"):c.formattedValue}` +
+               `  (${c.parsed.y>=100?"+":""}${(c.parsed.y-100).toFixed(1)}%)`;
+      }}}},
+      scales:{ x:{ grid:{display:false}, ticks:{ font:FONT, color:"#a8a29a", maxRotation:0, autoSkipPadding:22 } },
+        y:{ grid:{color:"#f0ede7"}, border:{display:false},
+            ticks:{ font:FONT, color:"#a8a29a", callback:v=>(v-100>=0?"+":"")+(v-100).toFixed(0)+"%" } } }
+    })
+  });
+}
+
+function drawInvestor(){
+  const I = MARKET && MARKET.investor;
+  const wrap = document.getElementById("invwrap");
+  if(!I || !I[invMarket]){
+    wrap.innerHTML = '<div class="nodata">외국인·기관 매매 데이터가 아직 없습니다.<br>' +
+      '깃허브 자동 실행이 돌고 나면 채워집니다.</div>';
+    return;
+  }
+  const d = I[invMarket];
+  if(invChart) invChart.destroy();
+  invChart = new Chart(document.getElementById("invChart"), {
+    type:"bar",
+    data:{ labels:d.d.map(shortDate), datasets:[
+      { label:"외국인", data:d.foreign, backgroundColor:"#c0392b", borderRadius:2 },
+      { label:"기관",   data:d.inst,    backgroundColor:"#e0a33e", borderRadius:2 },
+      { label:"개인",   data:d.indiv,   backgroundColor:"#5a9bd8", borderRadius:2 }
+    ]},
+    options: baseOpts({ plugins:{ legend:{display:false}, tooltip:{
+      backgroundColor:"#1c1b19", padding:9, cornerRadius:7, titleFont:FONT, bodyFont:FONT,
+      callbacks:{ label: c => ` ${c.dataset.label}  ${c.parsed.y>0?"+":""}${c.parsed.y.toLocaleString("ko-KR")}억` }}},
+      scales:{ x:{ grid:{display:false}, ticks:{ font:FONT, color:"#a8a29a", maxRotation:0, autoSkipPadding:18 } },
+        y:{ grid:{color:"#f0ede7"}, border:{display:false},
+            ticks:{ font:FONT, color:"#a8a29a", callback:v=>v.toLocaleString("ko-KR") } } }
+    })
+  });
+}
+
+document.querySelectorAll("#periodbar .seg").forEach(b=>b.onclick=()=>{
+  period=+b.dataset.p; LS.set("period",period);
+  document.querySelectorAll("#periodbar .seg").forEach(x=>x.classList.toggle("on",x===b));
+  drawHistory();
+});
+document.querySelectorAll("#marketbar .seg").forEach(b=>b.onclick=()=>{
+  invMarket=b.dataset.m; LS.set("invmkt",invMarket);
+  document.querySelectorAll("#marketbar .seg").forEach(x=>x.classList.toggle("on",x===b));
+  drawInvestor();
+});
+function restoreSegs(){
+  document.querySelectorAll("#periodbar .seg").forEach(x=>x.classList.toggle("on",+x.dataset.p===period));
+  document.querySelectorAll("#marketbar .seg").forEach(x=>x.classList.toggle("on",x.dataset.m===invMarket));
+}
+
 /* 데이터 불러오기 — 캐시를 피해 매번 새로 받습니다 */
 async function boot(){
   const bust = "?v=" + Date.now();
@@ -371,6 +527,8 @@ async function boot(){
         '일 전입니다. 깃허브의 Actions 탭에서 자동 실행이 멈추지 않았는지 확인해 주세요.</div>';
     }
     drawMarket();
+    restoreSegs();
+    if(document.getElementById("v-chart").classList.contains("on")){ drawHistory(); drawInvestor(); }
   }
   const have = dates();
   if (have.length) {

@@ -116,6 +116,71 @@ def fetch_stocks():
     return out
 
 
+
+def fetch_history():
+    """차트용 지수 1년치. 코스피·코스닥 종가만 모읍니다."""
+    import FinanceDataReader as fdr
+    start = (datetime.datetime.now(KST) - datetime.timedelta(days=400)).strftime("%Y-%m-%d")
+    out = {}
+    for code, name in KR_INDEX:
+        try:
+            df = fdr.DataReader(code, start)
+            close = df["Close"].dropna().tail(260)
+            out[name] = {
+                "d": [str(i.date()) for i in close.index],
+                "v": [round(float(v), 2) for v in close.values],
+            }
+            note(f"[히스토리] {name} {len(close)}일")
+        except Exception as e:
+            note(f"[실패] {name} 히스토리: {type(e).__name__}")
+    return out
+
+
+def fetch_investor():
+    """외국인·기관·개인 매매동향. pykrx가 필요합니다.
+    이 부분이 실패해도 나머지 화면은 정상 동작합니다."""
+    try:
+        from pykrx import stock as krx
+    except ImportError:
+        note("[건너뜀] pykrx가 설치되지 않았습니다")
+        return None
+
+    today = datetime.datetime.now(KST)
+    end = today.strftime("%Y%m%d")
+    begin = (today - datetime.timedelta(days=40)).strftime("%Y%m%d")
+    out = {}
+    for market in ("KOSPI", "KOSDAQ"):
+        try:
+            df = krx.get_market_trading_value_by_date(begin, end, market)
+            if df is None or df.empty:
+                note(f"[건너뜀] {market} 투자자별 매매: 데이터 없음")
+                continue
+            df = df.tail(20)
+            cols = {c: c for c in df.columns}
+            def pick(*names):
+                for n in names:
+                    if n in cols:
+                        return n
+                return None
+            c_for = pick("외국인합계", "외국인")
+            c_ins = pick("기관합계", "기관")
+            c_ind = pick("개인")
+            if not (c_for and c_ins and c_ind):
+                note(f"[건너뜀] {market}: 컬럼 이름을 찾지 못했습니다 {list(df.columns)}")
+                continue
+            # 억원 단위로 환산해서 보기 쉽게
+            out[market] = {
+                "d": [str(i.date()) if hasattr(i, "date") else str(i) for i in df.index],
+                "foreign": [round(float(v) / 1e8) for v in df[c_for].values],
+                "inst":    [round(float(v) / 1e8) for v in df[c_ins].values],
+                "indiv":   [round(float(v) / 1e8) for v in df[c_ind].values],
+            }
+            note(f"[투자자] {market} {len(df)}일")
+        except Exception as e:
+            note(f"[실패] {market} 투자자별 매매: {type(e).__name__} {str(e)[:80]}")
+    return out or None
+
+
 def gauge(vix, us, kr_breadth=None):
     """공포·탐욕 게이지. 0=극단적 공포, 100=극단적 탐욕."""
     def clamp(v):
@@ -145,6 +210,8 @@ def main():
     kr = fetch_kr_indices()
     us, vix = fetch_us_indices()
     stocks = fetch_stocks()
+    history = fetch_history()
+    investor = fetch_investor()
 
     # 하나라도 실패하면 지난번 값을 그대로 둡니다. 빈 화면을 보여주지 않기 위해서입니다.
     if not kr and prev.get("indices"):
@@ -156,17 +223,25 @@ def main():
     if not stocks and prev.get("stocks"):
         stocks = prev["stocks"]
         note("[대체] 종목 시세는 지난번 값을 유지합니다")
+    if not history and prev.get("history"):
+        history = prev["history"]
+        note("[대체] 차트 히스토리는 지난번 값을 유지합니다")
+    if not investor and prev.get("investor"):
+        investor = prev["investor"]
+        note("[대체] 투자자별 매매는 지난번 값을 유지합니다")
 
     data = {
         "asOf": datetime.datetime.now(KST).isoformat(timespec="seconds"),
         "indices": kr + us,
         "gauge": gauge(vix, us),
         "stocks": stocks,
+        "history": history,
+        "investor": investor,
         "log": log,
     }
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     json.dump(data, open(OUT, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    note(f"[완료] {OUT} 저장 · 지수 {len(data['indices'])}개 · 종목 {len(stocks)}개")
+    note(f"[완료] 저장 · 지수 {len(data['indices'])}개 · 종목 {len(stocks)}개 · 차트 {len(history or {})}개 · 투자자 {len(investor or {})}개")
 
     if not data["indices"]:
         note("[경고] 지수를 하나도 못 가져왔습니다")
