@@ -26,6 +26,30 @@ STOCKS = {
     "005960": "동부건설",
 }
 
+
+import signal
+from contextlib import contextmanager
+
+
+class Timeout(Exception):
+    pass
+
+
+@contextmanager
+def limit(seconds, what):
+    """정해진 시간 안에 안 끝나면 포기합니다.
+    응답 없는 서버를 무한정 기다리다 전체가 멈추는 걸 막습니다."""
+    def handler(signum, frame):
+        raise Timeout(f"{what}: {seconds}초 초과")
+    old = signal.signal(signal.SIGALRM, handler)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
+
+
 log = []
 def note(msg):
     print(msg, flush=True)
@@ -103,7 +127,8 @@ def fetch_stocks():
     out = {}
     for code, name in STOCKS.items():
         try:
-            df = fdr.DataReader(code, start)
+            with limit(12, f"{name} 조회"):
+                df = fdr.DataReader(code, start)
             if df.empty or len(df) < 2:
                 note(f"[건너뜀] {name}({code}): 데이터 부족")
                 continue
@@ -124,7 +149,8 @@ def fetch_history():
     out = {}
     for code, name in KR_INDEX:
         try:
-            df = fdr.DataReader(code, start)
+            with limit(40, f"{name} 히스토리"):
+                df = fdr.DataReader(code, start)
             close = df["Close"].dropna().tail(260)
             out[name] = {
                 "d": [str(i.date()) for i in close.index],
@@ -151,7 +177,8 @@ def fetch_investor():
     out = {}
     for market in ("KOSPI", "KOSDAQ"):
         try:
-            df = krx.get_market_trading_value_by_date(begin, end, market)
+            with limit(45, f"{market} 투자자별 매매"):
+                df = krx.get_market_trading_value_by_date(begin, end, market)
             if df is None or df.empty:
                 note(f"[건너뜀] {market} 투자자별 매매: 데이터 없음")
                 continue
@@ -207,11 +234,22 @@ def main():
         except Exception:
             pass
 
-    kr = fetch_kr_indices()
-    us, vix = fetch_us_indices()
-    stocks = fetch_stocks()
-    history = fetch_history()
-    investor = fetch_investor()
+    def guarded(fn, seconds, what, default):
+        try:
+            with limit(seconds, what):
+                return fn()
+        except Timeout as e:
+            note(f"[시간초과] {e}")
+        except Exception as e:
+            note(f"[실패] {what}: {type(e).__name__} {str(e)[:80]}")
+        return default
+
+    kr      = guarded(fetch_kr_indices, 90,  "국내 지수", [])
+    us_vix  = guarded(fetch_us_indices, 120, "해외 지수", ([], None))
+    us, vix = us_vix if isinstance(us_vix, tuple) else ([], None)
+    stocks  = guarded(fetch_stocks,     240, "종목 시세", {})
+    history = guarded(fetch_history,    120, "차트 히스토리", {})
+    investor= guarded(fetch_investor,   120, "투자자별 매매", None)
 
     # 하나라도 실패하면 지난번 값을 그대로 둡니다. 빈 화면을 보여주지 않기 위해서입니다.
     if not kr and prev.get("indices"):
