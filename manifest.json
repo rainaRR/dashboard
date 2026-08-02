@@ -1,0 +1,26 @@
+{
+  "name": "내 대시보드",
+  "short_name": "대시보드",
+  "description": "국내외 지수, 공포·탐욕 게이지, 지수 추이 차트, 신문 브리핑을 한 화면에서 봅니다.",
+  "start_url": "./?src=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f7f7f5",
+  "theme_color": "#1c1b19",
+  "lang": "ko",
+  "dir": "ltr",
+  "categories": ["finance", "news", "productivity"],
+  "icons": [
+    { "src": "icons/icon-192.png",     "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png",     "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "차트", "short_name": "차트", "url": "./?tab=chart",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "신문 브리핑", "short_name": "신문", "url": "./?tab=paper",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

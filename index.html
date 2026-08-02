@@ -7,6 +7,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="내 대시보드">
 <title>내 대시보드</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="favicon.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <style>
 body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30px; }
 
@@ -208,7 +213,10 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
 <div class="topbar">
   <h1>내 대시보드</h1>
   <span class="sub" id="stamp">불러오는 중…</span>
-  <button class="reload" onclick="location.reload()" style="margin-left:auto">새로고침</button>
+  <span style="margin-left:auto; display:flex; gap:6px">
+    <button class="reload" id="installBtn" style="display:none">앱으로 설치</button>
+    <button class="reload" onclick="location.reload()">새로고침</button>
+  </span>
 </div>
 
 <div id="stalebox"></div>
@@ -404,6 +412,41 @@ document.getElementById("wprev").onclick=()=>{weekStart.setDate(weekStart.getDat
 document.getElementById("wnext").onclick=()=>{weekStart.setDate(weekStart.getDate()+7);renderCal();};
 
 
+
+/* ============ 앱으로 설치 ============ */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(()=>{});
+  });
+}
+let deferredPrompt = null;
+window.addEventListener("beforeinstallprompt", e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const b = document.getElementById("installBtn");
+  if (b) {
+    b.style.display = "";
+    b.onclick = async () => {
+      b.style.display = "none";
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      deferredPrompt = null;
+    };
+  }
+});
+window.addEventListener("appinstalled", () => {
+  const b = document.getElementById("installBtn");
+  if (b) b.style.display = "none";
+});
+
+/* 홈화면 바로가기로 들어오면 해당 탭을 엽니다 */
+(function(){
+  const tab = new URLSearchParams(location.search).get("tab");
+  if (!tab) return;
+  const b = document.querySelector(`#nav button[data-v="${tab}"]`);
+  if (b) b.click();
+})();
+
 /* ============ 차트 ============ */
 let histChart=null, invChart=null, period=LS.get("period",90), invMarket=LS.get("invmkt","KOSPI");
 
@@ -469,8 +512,9 @@ function drawInvestor(){
   const I = MARKET && MARKET.investor;
   const wrap = document.getElementById("invwrap");
   if(!I || !I[invMarket]){
-    wrap.innerHTML = '<div class="nodata">외국인·기관 매매 데이터가 아직 없습니다.<br>' +
-      '깃허브 자동 실행이 돌고 나면 채워집니다.</div>';
+    wrap.innerHTML = '<div class="nodata"><b>준비 중입니다.</b><br>' +
+      '한국거래소가 이 자료에 로그인을 요구하도록 바꿔서,<br>' +
+      '한국투자증권 API를 연결한 뒤에 채워집니다.</div>';
     return;
   }
   const d = I[invMarket];
