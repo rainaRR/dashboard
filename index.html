@@ -281,19 +281,34 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
 
 <nav class="nav" id="nav">
   <button data-v="market" class="on">시장</button>
-  <button data-v="chart">차트</button>
-  <button data-v="flow">수급</button>
-  <button data-v="paper">신문 브리핑</button>
+  <button data-v="chart">지수</button>
+  <button data-v="flow">현황</button>
+  <button data-v="paper">신문</button>
 </nav>
 
 <section class="view on" id="v-market">
   <div class="card"><h2>시장 현황</h2><div class="idxrow" id="indices"><div class="loading">불러오는 중…</div></div>
     <div class="foot" id="idxfoot"></div></div>
-  <div class="card"><h2>공포 · 탐욕 지수 <span class="tag blue">CNN 원본</span></h2>
-    <div class="gauge" id="fg"><div class="loading">불러오는 중…</div></div></div>
+  <div class="card">
+    <h2>외국인 · 기관 매매 흐름 <span class="tag">최근 20거래일</span>
+      <span class="segbar" id="marketbar">
+        <button class="seg on" data-m="KOSPI">코스피</button>
+        <button class="seg" data-m="KOSDAQ">코스닥</button>
+      </span>
+    </h2>
+    <div id="invwrap"><div class="chartbox"><canvas id="invChart"></canvas></div>
+      <div class="legend">
+        <span><i style="background:#c0392b"></i>외국인</span>
+        <span><i style="background:#e0a33e"></i>기관</span>
+        <span><i style="background:#5a9bd8"></i>개인</span>
+        <span style="color:#a8a29a">막대가 0 위면 순매수, 아래면 순매도입니다 (단위: 억원)</span>
+      </div></div>
+  </div>
 </section>
 
 <section class="view" id="v-chart">
+  <div class="card"><h2>공포 · 탐욕 지수 <span class="tag blue">CNN 원본</span></h2>
+    <div class="gauge" id="fg"><div class="loading">불러오는 중…</div></div></div>
   <div class="card">
     <h2>지수 추이
       <span class="segbar" id="periodbar">
@@ -314,28 +329,13 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
       <div class="foot">두 지수를 각자 첫날 기준 100으로 맞춰 겹쳐 그렸습니다.</div></div>
   </div>
 
-  <div class="card">
-    <h2>외국인 · 기관 매매 흐름 <span class="tag">최근 20거래일</span>
-      <span class="segbar" id="marketbar">
-        <button class="seg on" data-m="KOSPI">코스피</button>
-        <button class="seg" data-m="KOSDAQ">코스닥</button>
-      </span>
-    </h2>
-    <div id="invwrap"><div class="chartbox"><canvas id="invChart"></canvas></div>
-      <div class="legend">
-        <span><i style="background:#c0392b"></i>외국인</span>
-        <span><i style="background:#e0a33e"></i>기관</span>
-        <span><i style="background:#5a9bd8"></i>개인</span>
-        <span style="color:#a8a29a">막대가 0 위면 순매수, 아래면 순매도입니다 (단위: 억원)</span>
-      </div></div>
-  </div>
 </section>
 
 <section class="view" id="v-flow">
   <div id="flowstamp" class="note" style="display:none"></div>
 
   <div class="card" id="cardStrength">
-    <h2>매수세 · 매도세 <span class="tag blue">체결강도</span><span id="liveTag"></span></h2>
+    <h2>매수 · 매도 강도 <span class="tag blue">체결강도</span><span id="liveTag"></span></h2>
     <div class="srchbox">
       <input id="stockSearch" placeholder="종목 검색 — 삼성전자 / 005930 / SAMSUNG / ㅅㅅㅈㅈ" autocomplete="off">
       <div class="sugg" id="sugg" style="display:none"></div>
@@ -347,7 +347,7 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
   </div>
 
   <div class="card" id="cardRank">
-    <h2>외국인 · 기관 순매수 <span class="tag">ETF 제외</span></h2>
+    <h2>외국인 · 기관 현황 <span class="tag">ETF 제외</span></h2>
     <div id="rank"><div class="loading">불러오는 중…</div></div>
   </div>
 
@@ -400,8 +400,12 @@ document.querySelectorAll("#nav button").forEach(b=>{
     document.querySelectorAll(".view").forEach(v=>v.classList.toggle("on",v.id==="v-"+b.dataset.v));
     LS.set("view",b.dataset.v);
     // 차트는 화면에 보일 때 그려야 크기가 맞습니다
+    // 차트는 화면에 보일 때 그려야 크기가 맞습니다
+    if(b.dataset.v==="market" && typeof drawInvestor==="function" && MARKET){
+      requestAnimationFrame(()=>drawInvestor());     // 외국인·기관 매매 흐름
+    }
     if(b.dataset.v==="chart" && typeof drawHistory==="function" && MARKET){
-      requestAnimationFrame(()=>{ drawHistory(); drawInvestor(); });
+      requestAnimationFrame(()=>drawHistory());      // 지수 추이
     }
     if(b.dataset.v==="flow" && typeof drawFlow==="function"){
       requestAnimationFrame(()=>drawFlow());
@@ -533,20 +537,11 @@ function 고른목록그리기(){
   if(!box) return;
   box.innerHTML = 고른목록.map(t =>
     `<span class="pchip">${safe(t.n)}<span class="x" data-c="${t.c}">×</span></span>`).join("") +
-    `<span class="pcount">${고른목록.length} / ${최대}</span>` +
-    (고른목록.length ? `<button class="retry" id="copyList" style="margin-left:6px">수집 목록 복사</button>` : "");
+    (고른목록.length ? `<span class="pcount">${고른목록.length} / ${최대}</span>` : "");
   box.querySelectorAll(".x").forEach(x => x.onclick = () => {
     고른목록 = 고른목록.filter(t => t.c !== x.dataset.c);
     LS.set("watchlist", 고른목록); 고른목록그리기(); drawFlow();
   });
-  const cp = document.getElementById("copyList");
-  if(cp) cp.onclick = () => {
-    const 줄 = 고른목록.map(t => `  @{ code="${t.c}"; name="${t.n}"; 묶음="관심" }`).join("\n");
-    navigator.clipboard.writeText(줄).then(() => {
-      cp.textContent = "복사됨 — 수급수집.ps1 의 $종목 목록에 붙여넣으세요";
-      setTimeout(() => cp.textContent = "수집 목록 복사", 4000);
-    }).catch(() => alert(줄));
-  };
 }
 
 function 검색붙이기(){
@@ -624,7 +619,7 @@ function drawFlow(){
   if(!KIWOOM){
     document.getElementById("strength").innerHTML =
       '<div class="nodata"><b>아직 수급 자료가 없습니다.</b><br>' +
-      'PC에서 <b>▶수급 수집</b>을 실행하고 만들어진 파일을 올리면 채워집니다.</div>';
+      '위 검색창에서 종목을 담아두시면 자료가 들어오는 대로 채워집니다.</div>';
     document.getElementById("rank").innerHTML = "";
     document.getElementById("dailywrap").innerHTML = "";
     document.getElementById("cardRank").style.display = "none";
@@ -663,10 +658,10 @@ function drawFlow(){
     document.getElementById("strength").innerHTML =
       '<div class="sgrid">' + st.map(x => {
         if(x.미수집) return `<div class="scard" style="opacity:.55">
-          <div><span class="nm">${safe(x.name)}</span></div>
+          <div><span class="nm">${safe(x.name)}</span><span class="code">${x.code}</span></div>
           <div class="big" style="color:#c4bfb6">–</div>
-          <div class="stat" style="color:#a8a29a">수집 목록에 없음</div>
-          <div class="smini"><span style="font-size:9.5px">아래 “수집 목록 복사”로 추가하세요</span></div>
+          <div class="stat" style="color:#a8a29a">아직 자료 없음</div>
+          <div class="smini"><span style="font-size:9.5px">다음 수집 때 채워집니다</span></div>
         </div>`;
         const c = 강도색(x.str);
         const 폭 = clamp(x.str / 2, 3, 100);   // 200을 최대로 봅니다
@@ -1124,7 +1119,8 @@ async function boot(){
     drawMarket();
     경보그리기();
     restoreSegs();
-    if(document.getElementById("v-chart").classList.contains("on")){ drawHistory(); drawInvestor(); }
+    if(document.getElementById("v-market").classList.contains("on")) drawInvestor();
+    if(document.getElementById("v-chart").classList.contains("on"))  drawHistory();
   }
   if(document.getElementById("v-flow").classList.contains("on")){ drawFlow(); }
   {
