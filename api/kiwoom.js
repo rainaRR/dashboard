@@ -68,8 +68,9 @@ async function getToken() {
   const now = Date.now();
   if (cachedToken && now < cachedUntil) return cachedToken;
 
-  const key = process.env.KIWOOM_APP_KEY;
-  const secret = process.env.KIWOOM_SECRET;
+  // 붙여넣을 때 앞뒤에 공백이나 줄바꿈이 딸려오는 일이 흔합니다
+  const key = (process.env.KIWOOM_APP_KEY || "").trim();
+  const secret = (process.env.KIWOOM_SECRET || "").trim();
   if (!key || !secret) {
     throw new Error("환경변수 KIWOOM_APP_KEY 또는 KIWOOM_SECRET 이 없습니다");
   }
@@ -146,6 +147,80 @@ async function callKiwoom(apiId, body, contYn, nextKey) {
   };
 }
 
+
+/* 어떤 형식이 통하는지 한 번에 다 시험합니다.
+   ★ 키 값은 절대 내보내지 않습니다. */
+async function 형식진단() {
+  const rawKey = process.env.KIWOOM_APP_KEY || "";
+  const rawSec = process.env.KIWOOM_SECRET || "";
+  const key = rawKey.trim(), secret = rawSec.trim();
+
+  const 값점검 = {
+    "앱키 길이": `원본 ${rawKey.length} / 공백제거 ${key.length}`,
+    "시크릿 길이": `원본 ${rawSec.length} / 공백제거 ${secret.length}`,
+    "앞뒤 공백 있었나": (rawKey.length !== key.length || rawSec.length !== secret.length) ? "있었음 ⚠" : "없음",
+    "둘이 같은 값인가": key === secret ? "같음 ⚠ (잘못 붙여넣었을 수 있습니다)" : "다름",
+    "앱키 시작": key.slice(0, 3) + "…",
+    "시크릿 시작": secret.slice(0, 3) + "…",
+  };
+
+  const 시도목록 = [
+    { 이름: "JSON · secretkey",
+      ct: "application/json;charset=UTF-8",
+      body: JSON.stringify({ grant_type: "client_credentials", appkey: key, secretkey: secret }) },
+    { 이름: "JSON · appsecretkey",
+      ct: "application/json;charset=UTF-8",
+      body: JSON.stringify({ grant_type: "client_credentials", appkey: key, appsecretkey: secret }) },
+    { 이름: "JSON · appsecret",
+      ct: "application/json;charset=UTF-8",
+      body: JSON.stringify({ grant_type: "client_credentials", appkey: key, appsecret: secret }) },
+    { 이름: "JSON(charset 없음) · secretkey",
+      ct: "application/json",
+      body: JSON.stringify({ grant_type: "client_credentials", appkey: key, secretkey: secret }) },
+    { 이름: "JSON · 세 이름 모두",
+      ct: "application/json;charset=UTF-8",
+      body: JSON.stringify({ grant_type: "client_credentials", appkey: key,
+                             secretkey: secret, appsecretkey: secret, appsecret: secret }) },
+    { 이름: "폼(form-urlencoded) · secretkey",
+      ct: "application/x-www-form-urlencoded",
+      body: new URLSearchParams({ grant_type: "client_credentials", appkey: key, secretkey: secret }).toString() },
+  ];
+
+  const 결과 = [];
+  for (const t of 시도목록) {
+    try {
+      const r = await fetch(TOKEN_URL, {
+        method: "POST",
+        headers: { "Content-Type": t.ct },
+        body: t.body,
+      });
+      const text = await r.text();
+      let j = null;
+      try { j = JSON.parse(text); } catch (e) {}
+      const tok = j && (j.token || j.access_token);
+      결과.push({
+        형식: t.이름,
+        HTTP: r.status,
+        성공: !!tok,
+        코드: j ? j.return_code : null,
+        메시지: j ? (j.return_msg || "").slice(0, 120) : text.slice(0, 120),
+      });
+      if (tok) break;   // 되는 걸 찾으면 멈춥니다
+    } catch (e) {
+      결과.push({ 형식: t.이름, 성공: false, 메시지: String(e.message || e).slice(0, 120) });
+    }
+  }
+
+  const 성공한것 = 결과.find(r => r.성공);
+  return {
+    값점검,
+    시도결과: 결과,
+    결론: 성공한것
+      ? `"${성공한것.형식}" 형식으로 성공했습니다. 이 형식으로 고정하면 됩니다.`
+      : "모든 형식이 실패했습니다. 키 자체나 API 사용 승인 상태를 확인해야 합니다.",
+  };
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -154,6 +229,15 @@ export default async function handler(req, res) {
 
   const q = req.query || {};
   const body = (req.method === "POST" && req.body) ? req.body : {};
+
+  // ── 형식 진단 모드: 어떤 요청 형식이 통하는지 전부 시험 ──
+  if (q.diag === "1") {
+    try {
+      return res.status(200).json(await 형식진단());
+    } catch (e) {
+      return res.status(500).json({ error: String(e.message || e) });
+    }
+  }
 
   // ── 점검 모드: 설정이 제대로 됐는지만 확인 ──
   if (q.check === "1") {
