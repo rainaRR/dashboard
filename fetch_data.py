@@ -4,7 +4,7 @@
 깃허브 서버(GitHub Actions)가 평일마다 자동으로 실행합니다.
 컴퓨터를 켜둘 필요가 없습니다.
 """
-import json, os, sys, datetime, traceback
+import json, os, re, sys, datetime, traceback
 
 KST = datetime.timezone(datetime.timedelta(hours=9))
 OUT = os.path.join(os.path.dirname(__file__), "data", "market.json")

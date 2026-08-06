@@ -210,6 +210,25 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
   margin-top:9px; font-variant-numeric:tabular-nums; }
 .cnnprev span b { color:#3f3b35; font-weight:650; }
 .srcnote { font-size:10.5px; color:#a8a29a; margin-top:7px; }
+.srchbox { position:relative; margin-bottom:11px; }
+.srchbox input { width:100%; padding:9px 12px; border:1px solid #e0dcd4; border-radius:9px;
+  font-size:13.5px; font-family:inherit; background:#faf9f7; color:#1c1b19; }
+.srchbox input:focus { outline:none; border-color:#c4bfb6; background:#fff; }
+.sugg { position:absolute; z-index:20; left:0; right:0; top:calc(100% + 4px); background:#fff;
+  border:1px solid #e0dcd4; border-radius:10px; box-shadow:0 6px 20px rgba(0,0,0,.09);
+  max-height:280px; overflow:auto; }
+.sugg div { padding:8px 12px; cursor:pointer; font-size:13px; display:flex; align-items:center; gap:8px; }
+.sugg div:hover, .sugg div.hi { background:#f5f3ef; }
+.sugg .mk { font-size:9.5px; color:#a8a29a; border:1px solid #eeebe5; border-radius:4px; padding:0 4px; }
+.picked { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:11px; }
+.pchip { font-size:12px; padding:4px 7px 4px 10px; border-radius:20px; border:1px solid #e0dcd4;
+  background:#faf9f7; color:#54504a; display:inline-flex; align-items:center; gap:6px; }
+.pchip .x { opacity:.45; cursor:pointer; font-size:13px; }
+.pchip .x:hover { opacity:1; }
+.pcount { font-size:11px; color:#a8a29a; margin-left:4px; }
+.livedot { display:inline-block; width:6px; height:6px; border-radius:50%; background:#c0392b;
+  margin-right:5px; animation:pulse 1.6s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
 .sgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(158px,1fr)); gap:9px; }
 .scard { border:1px solid #eeebe5; border-radius:10px; padding:10px 11px; }
 .scard .nm { font-size:12.5px; font-weight:600; }
@@ -263,9 +282,10 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
   <div class="card">
     <h2>지수 추이
       <span class="segbar" id="periodbar">
-        <button class="seg" data-p="30">1개월</button>
-        <button class="seg on" data-p="90">3개월</button>
-        <button class="seg" data-p="260">1년</button>
+        <button class="seg on" data-p="260">1년</button>
+        <button class="seg" data-p="130">6개월</button>
+        <button class="seg" data-p="65">3개월</button>
+        <button class="seg" data-p="22">1개월</button>
       </span>
     </h2>
     <div id="histwrap"><div class="chartbox"><canvas id="histChart"></canvas></div>
@@ -300,7 +320,12 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
   <div id="flowstamp" class="note" style="display:none"></div>
 
   <div class="card" id="cardStrength">
-    <h2>매수세 · 매도세 <span class="tag blue">체결강도</span></h2>
+    <h2>매수세 · 매도세 <span class="tag blue">체결강도</span><span id="liveTag"></span></h2>
+    <div class="srchbox">
+      <input id="stockSearch" placeholder="종목 검색 — 삼성전자 / 005930 / SAMSUNG / ㅅㅅㅈㅈ" autocomplete="off">
+      <div class="sugg" id="sugg" style="display:none"></div>
+    </div>
+    <div class="picked" id="picked"></div>
     <div id="strength"><div class="loading">불러오는 중…</div></div>
     <div class="foot">체결강도는 실제로 체결된 물량 중 사자 쪽이 얼마나 셌는지를 나타냅니다.
       <b>100이 넘으면 매수 우세</b>, 낮으면 매도 우세입니다. 장중에만 움직입니다.</div>
@@ -447,6 +472,127 @@ function drawMarket(){
 
 
 /* ============ 수급 (키움) ============ */
+/* ── 종목 검색 (한글·영문·코드·초성) ── */
+let STOCKS = [], 고른목록 = LS.get("watchlist", []);
+const 최대 = 12;
+
+const 초성표 = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ".split("");
+function 초성뽑기(t){
+  let o = "";
+  for(const ch of t){
+    const c = ch.charCodeAt(0);
+    o += (c >= 0xAC00 && c <= 0xD7A3) ? 초성표[Math.floor((c-0xAC00)/588)] : ch;
+  }
+  return o;
+}
+
+function 찾기(q){
+  q = (q||"").trim();
+  if(q.length < 1) return [];
+  const Q = q.toUpperCase(), 초 = 초성뽑기(Q);
+  const 점수 = t => {
+    if(t.c === q) return 0;                       // 코드 정확히
+    if(t.n === q) return 1;                       // 이름 정확히
+    if(t.n.startsWith(q)) return 2;               // 이름 앞부분
+    if(t.ch.startsWith(초)) return 3;             // 초성 앞부분
+    if(t.e && t.e.startsWith(Q)) return 4;        // 영문 앞부분
+    if(t.n.includes(q)) return 5;
+    if(t.ch.includes(초)) return 6;
+    if(t.e && t.e.includes(Q)) return 7;
+    if(t.c.startsWith(q)) return 8;
+    return 99;
+  };
+  const 찾은것 = STOCKS.map(t => [점수(t), t]).filter(x => x[0] < 99)
+    .sort((a,b) => a[0]-b[0]).slice(0, 12).map(x => x[1]);
+
+  // 목록에 없어도 6자리 숫자면 직접 담을 수 있게 합니다.
+  // (종목 목록이 완전하지 않아 빠진 종목이 있습니다)
+  if(/^\d{6}$/.test(q) && !찾은것.some(t => t.c === q)){
+    찾은것.unshift({ c:q, n:q, e:"", m:"직접", ch:"" });
+  }
+  return 찾은것;
+}
+
+function 고른목록그리기(){
+  const box = document.getElementById("picked");
+  if(!box) return;
+  box.innerHTML = 고른목록.map(t =>
+    `<span class="pchip">${safe(t.n)}<span class="x" data-c="${t.c}">×</span></span>`).join("") +
+    `<span class="pcount">${고른목록.length} / ${최대}</span>` +
+    (고른목록.length ? `<button class="retry" id="copyList" style="margin-left:6px">수집 목록 복사</button>` : "");
+  box.querySelectorAll(".x").forEach(x => x.onclick = () => {
+    고른목록 = 고른목록.filter(t => t.c !== x.dataset.c);
+    LS.set("watchlist", 고른목록); 고른목록그리기(); drawFlow();
+  });
+  const cp = document.getElementById("copyList");
+  if(cp) cp.onclick = () => {
+    const 줄 = 고른목록.map(t => `  @{ code="${t.c}"; name="${t.n}"; 묶음="관심" }`).join("\n");
+    navigator.clipboard.writeText(줄).then(() => {
+      cp.textContent = "복사됨 — 수급수집.ps1 의 $종목 목록에 붙여넣으세요";
+      setTimeout(() => cp.textContent = "수집 목록 복사", 4000);
+    }).catch(() => alert(줄));
+  };
+}
+
+function 검색붙이기(){
+  const inp = document.getElementById("stockSearch");
+  const box = document.getElementById("sugg");
+  if(!inp || !box) return;
+  let 결과 = [], 커서 = -1;
+
+  const 닫기 = () => { box.style.display = "none"; 커서 = -1; };
+  const 그리기 = () => {
+    if(!결과.length) return 닫기();
+    box.innerHTML = 결과.map((t,i) =>
+      `<div class="${i===커서?"hi":""}" data-i="${i}">
+         <span class="mk">${t.m}</span>
+         <b>${safe(t.n)}</b>
+         <span class="code">${t.c}</span>
+       </div>`).join("");
+    box.style.display = "";
+    box.querySelectorAll("div[data-i]").forEach(d =>
+      d.onclick = () => 담기(결과[+d.dataset.i]));
+  };
+  const 담기 = t => {
+    if(고른목록.some(x => x.c === t.c)) { inp.value=""; 닫기(); return; }
+    if(고른목록.length >= 최대){ alert(`최대 ${최대}개까지 담을 수 있습니다.`); return; }
+    고른목록.push({ c:t.c, n:t.n });
+    LS.set("watchlist", 고른목록);
+    inp.value = ""; 닫기(); 고른목록그리기(); drawFlow();
+  };
+
+  inp.oninput = () => { 결과 = 찾기(inp.value); 커서 = 결과.length ? 0 : -1; 그리기(); };
+  inp.onkeydown = e => {
+    if(box.style.display === "none") return;
+    if(e.key === "ArrowDown"){ 커서 = Math.min(커서+1, 결과.length-1); 그리기(); e.preventDefault(); }
+    else if(e.key === "ArrowUp"){ 커서 = Math.max(커서-1, 0); 그리기(); e.preventDefault(); }
+    else if(e.key === "Enter" && 결과[커서]){ 담기(결과[커서]); e.preventDefault(); }
+    else if(e.key === "Escape") 닫기();
+  };
+  inp.onblur = () => setTimeout(닫기, 180);
+}
+
+/* ── 장중이면 데이터를 주기적으로 다시 받습니다 ── */
+let 실시간타이머 = null;
+function 장중인가(){
+  const n = new Date(), 요일 = n.getDay(), h = n.getHours() + n.getMinutes()/60;
+  return 요일 >= 1 && 요일 <= 5 && h >= 9 && h <= 15.55;
+}
+function 실시간켜기(){
+  const tag = document.getElementById("liveTag");
+  if(실시간타이머) clearInterval(실시간타이머);
+  if(!장중인가()){ if(tag) tag.innerHTML = ""; return; }
+  if(tag) tag.innerHTML = '<span class="tag red"><span class="livedot"></span>장중 실시간</span>';
+  실시간타이머 = setInterval(async () => {
+    if(!장중인가()){ clearInterval(실시간타이머); if(tag) tag.innerHTML=""; return; }
+    try {
+      const r = await fetch("data/kiwoom.json?v=" + Date.now());
+      const j = await r.json();
+      if(j && j.asOf !== (KIWOOM||{}).asOf){ KIWOOM = j; drawFlow(); }
+    } catch(e){}
+  }, 60000);   // 1분마다 새 파일이 올라왔는지 확인
+}
+
 let KIWOOM = null, dailyChart = null, 고른종목 = null;
 
 function 강도색(v){
@@ -484,12 +630,29 @@ function drawFlow(){
     (지난시간 > 20 ? ` <span style="color:#b3261e">(${Math.floor(지난시간/24)}일 지났습니다. 다시 수집해 주세요.)</span>` : "");
 
   // ── 체결강도 ──
-  const st = KIWOOM.체결강도 || [];
+  const 수집됨 = KIWOOM.체결강도 || [];
+  // 고른 종목이 있으면 그 순서대로, 없으면 수집된 그대로
+  let st;
+  if(고른목록.length){
+    st = 고른목록.map(w => {
+      const found = 수집됨.find(x => x.code === w.c);
+      return found || { code:w.c, name:w.n, str:null, 미수집:true };
+    });
+  } else {
+    st = 수집됨;
+  }
   if(!st.length){
-    document.getElementById("strength").innerHTML = '<div class="loading">체결강도 자료가 없습니다.</div>';
+    document.getElementById("strength").innerHTML =
+      '<div class="nodata">위 검색창에서 보고 싶은 종목을 담아보세요.<br>최대 12개까지 됩니다.</div>';
   } else {
     document.getElementById("strength").innerHTML =
       '<div class="sgrid">' + st.map(x => {
+        if(x.미수집) return `<div class="scard" style="opacity:.55">
+          <div><span class="nm">${safe(x.name)}</span></div>
+          <div class="big" style="color:#c4bfb6">–</div>
+          <div class="stat" style="color:#a8a29a">수집 목록에 없음</div>
+          <div class="smini"><span style="font-size:9.5px">아래 “수집 목록 복사”로 추가하세요</span></div>
+        </div>`;
         const c = 강도색(x.str);
         const 폭 = clamp(x.str / 2, 3, 100);   // 200을 최대로 봅니다
         return `<div class="scard">
@@ -673,7 +836,7 @@ window.addEventListener("appinstalled", () => {
 })();
 
 /* ============ 차트 ============ */
-let histChart=null, invChart=null, period=LS.get("period",90), invMarket=LS.get("invmkt","KOSPI");
+let histChart=null, invChart=null, period=LS.get("period",260), invMarket=LS.get("invmkt","KOSPI");
 
 const FONT = { family: getComputedStyle(document.body).fontFamily, size: 11 };
 function baseOpts(extra){
@@ -711,10 +874,18 @@ function drawHistory(){
   const norm = arr => { const b=arr[0]; return b ? arr.map(v=>+(v/b*100).toFixed(2)) : arr; };
   const labels = cut(src.d).map(shortDate);
   const sets=[];
+  // 마지막 점(=오늘)만 크게 찍어 지금 어디인지 보이게 합니다
+  const 끝점 = n => Array.from({length:n}, (_,i) => i === n-1 ? 5 : 0);
+  const 끝점테두리 = n => Array.from({length:n}, (_,i) => i === n-1 ? 2 : 0);
+
   if(ks) sets.push({ label:"코스피", data:norm(cut(ks.v)), raw:cut(ks.v),
-    borderColor:"#c0392b", backgroundColor:"#c0392b", borderWidth:2, pointRadius:0, tension:.15 });
+    borderColor:"#c0392b", backgroundColor:"#fff", borderWidth:2, tension:.15,
+    pointRadius:끝점(labels.length), pointBorderColor:"#c0392b",
+    pointBorderWidth:끝점테두리(labels.length), pointHoverRadius:5 });
   if(kq) sets.push({ label:"코스닥", data:norm(cut(kq.v)), raw:cut(kq.v),
-    borderColor:"#1c6fd0", backgroundColor:"#1c6fd0", borderWidth:2, pointRadius:0, tension:.15 });
+    borderColor:"#1c6fd0", backgroundColor:"#fff", borderWidth:2, tension:.15,
+    pointRadius:끝점(labels.length), pointBorderColor:"#1c6fd0",
+    pointBorderWidth:끝점테두리(labels.length), pointHoverRadius:5 });
 
   // 코스피 기준 전고점·전저점을 가로선으로 얹습니다 (정규화 값으로 변환)
   const kIdx = (MARKET.indices||[]).find(i=>i.nm==="KOSPI");
@@ -730,10 +901,26 @@ function drawHistory(){
 
   const sumEl = document.getElementById("hlsummary");
   if(sumEl){
+    const 기간이름 = {260:"1년", 130:"6개월", 65:"3개월", 22:"1개월"}[period] || "";
     const parts = (MARKET.indices||[]).filter(i=>i.nm==="KOSPI"||i.nm==="KOSDAQ")
       .filter(i=>i.fromHi!==undefined)
-      .map(i=>`${i.nm} — 전고점(${i.hiDate}) 대비 <b class="down">${i.fromHi.toFixed(1)}%</b>, `+
-               `전저점(${i.loDate}) 대비 <b class="up">+${i.fromLo.toFixed(1)}%</b>`);
+      .map(i=>{
+        // 이 기간 안에서 지금이 어디쯤인지 (0% = 기간 최저, 100% = 기간 최고)
+        const src2 = H[i.nm];
+        let 기간위치 = "";
+        if(src2){
+          const v = src2.v.slice(-Math.min(period, src2.v.length));
+          const lo2 = Math.min(...v), hi2 = Math.max(...v), now = v[v.length-1];
+          if(hi2 > lo2){
+            const pos = (now - lo2) / (hi2 - lo2) * 100;
+            기간위치 = ` · ${기간이름} 안에서는 <b>${pos.toFixed(0)}% 지점</b>` +
+                       ` (최저 ${nf2(lo2)} ~ 최고 ${nf2(hi2)})`;
+          }
+        }
+        return `<b>${i.nm} ${nf2(i.price)}</b> — 52주 전고점(${i.hiDate}) 대비 ` +
+               `<b class="down">${i.fromHi.toFixed(1)}%</b>, 전저점 대비 ` +
+               `<b class="up">+${i.fromLo.toFixed(1)}%</b>${기간위치}`;
+      });
     sumEl.innerHTML = parts.join("<br>");
   }
 
@@ -807,6 +994,20 @@ async function boot(){
   }
   try { BRIEFS = await (await fetch("data/briefs.json" + bust)).json(); } catch(e) { BRIEFS = {}; }
   try { KIWOOM = await (await fetch("data/kiwoom.json" + bust)).json(); } catch(e) { KIWOOM = null; }
+  try { STOCKS = await (await fetch("data/stocks.json" + bust)).json(); } catch(e) { STOCKS = []; }
+  // 키움에서 받은 종목 이름을 검색 목록에 합칩니다 (빠진 종목 보완)
+  if(KIWOOM && KIWOOM.수급순위){
+    const 있는코드 = new Set(STOCKS.map(t => t.c));
+    for(const 묶음 of Object.values(KIWOOM.수급순위)){
+      for(const r of (묶음||[])){
+        if(r.code && r.name && !있는코드.has(r.code)){
+          STOCKS.push({ c:r.code, n:r.name, e:"", m:"KQ", ch:초성뽑기(r.name) });
+          있는코드.add(r.code);
+        }
+      }
+    }
+  }
+  검색붙이기(); 고른목록그리기(); 실시간켜기();
 
   if (MARKET) {
     const t = new Date(MARKET.asOf);
