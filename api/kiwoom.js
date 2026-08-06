@@ -62,6 +62,7 @@ function envDiagnosis() {
    키움은 토큰 발급 횟수에 제한이 있어 매번 새로 받으면 안 됩니다. */
 let cachedToken = null;
 let cachedUntil = 0;
+let lastTokenShape = null;   // 어느 이름으로 성공했는지 기록
 
 async function getToken() {
   const now = Date.now();
@@ -73,26 +74,41 @@ async function getToken() {
     throw new Error("환경변수 KIWOOM_APP_KEY 또는 KIWOOM_SECRET 이 없습니다");
   }
 
-  const r = await fetch(TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json;charset=UTF-8" },
-    body: JSON.stringify({
-      grant_type: "client_credentials",
-      appkey: key,
-      appsecretkey: secret,
-    }),
-  });
+  // 키움이 기다리는 항목 이름이 문서마다 다르게 적혀 있습니다.
+  // secretkey 를 먼저 쓰고, 안 되면 appsecretkey 로 한 번 더 시도합니다.
+  const 후보 = [
+    { grant_type: "client_credentials", appkey: key, secretkey: secret },
+    { grant_type: "client_credentials", appkey: key, appsecretkey: secret },
+  ];
 
-  const text = await r.text();
-  let j;
-  try { j = JSON.parse(text); }
-  catch (e) { throw new Error(`토큰 응답이 JSON이 아닙니다 (HTTP ${r.status}): ${text.slice(0, 200)}`); }
+  let token = null, 마지막오류 = "", 성공한형식 = "";
+  for (const payload of 후보) {
+    const r = await fetch(TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json;charset=UTF-8" },
+      body: JSON.stringify(payload),
+    });
+    const text = await r.text();
+    let j;
+    try { j = JSON.parse(text); }
+    catch (e) { 마지막오류 = `토큰 응답이 JSON이 아닙니다 (HTTP ${r.status}): ${text.slice(0, 200)}`; continue; }
 
-  // 키움은 성공 시 return_code 0, 토큰은 token 필드에 담겨 옵니다
-  const token = j.token || j.access_token;
-  if (!token) {
-    throw new Error(`토큰 발급 실패 [${j.return_code}] ${j.return_msg || text.slice(0, 200)}`);
+    // 키움은 성공 시 return_code 0, 토큰은 token 필드에 담겨 옵니다
+    const t = j.token || j.access_token;
+    if (t) {
+      token = t;
+      성공한형식 = Object.keys(payload).find(k => k !== "grant_type" && k !== "appkey");
+      lastTokenShape = 성공한형식;
+      var 응답 = j;
+      break;
+    }
+    마지막오류 = `[${j.return_code}] ${j.return_msg || text.slice(0, 200)}`;
   }
+
+  if (!token) {
+    throw new Error(`토큰 발급 실패 ${마지막오류}`);
+  }
+  const j = 응답;
 
   cachedToken = token;
   // 유효기간보다 10분 일찍 만료 처리해 경계에서 실패하지 않게 합니다
@@ -147,6 +163,7 @@ export default async function handler(req, res) {
         ok: true,
         message: "키움 접속 정상. 접근토큰을 받았습니다.",
         server: "실전투자 (api.kiwoom.com)",
+        토큰항목이름: lastTokenShape,
         allowedApis: Object.keys(ALLOWED),
         note: "주문 계열 API는 허용 목록에 없어 호출할 수 없습니다.",
       });
