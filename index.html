@@ -210,6 +210,23 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
   margin-top:9px; font-variant-numeric:tabular-nums; }
 .cnnprev span b { color:#3f3b35; font-weight:650; }
 .srcnote { font-size:10.5px; color:#a8a29a; margin-top:7px; }
+.sgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(158px,1fr)); gap:9px; }
+.scard { border:1px solid #eeebe5; border-radius:10px; padding:10px 11px; }
+.scard .nm { font-size:12.5px; font-weight:600; }
+.scard .grp { font-size:10px; color:#a8a29a; margin-left:4px; }
+.scard .big { font-size:23px; font-weight:680; letter-spacing:-.5px; margin-top:3px; font-variant-numeric:tabular-nums; }
+.scard .stat { font-size:11px; font-weight:600; }
+.sbar { height:5px; border-radius:3px; background:#efece6; margin-top:7px; overflow:hidden; position:relative; }
+.sbar i { display:block; height:100%; border-radius:3px; }
+.sbar b { position:absolute; top:-2px; left:50%; width:1px; height:9px; background:#c4bfb6; }
+.smini { font-size:10px; color:#a8a29a; margin-top:5px; display:flex; justify-content:space-between; font-variant-numeric:tabular-nums; }
+.rank2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+@media (max-width:760px){ .rank2 { grid-template-columns:1fr; } }
+.rank2 h4 { font-size:11.5px; margin:0 0 7px; color:#7a756d; font-weight:650; }
+.rrow { display:grid; grid-template-columns:1fr auto; gap:8px; padding:6px 0; border-bottom:1px solid #f3f1ec; font-size:12.5px; align-items:center; }
+.rrow:last-child { border-bottom:none; }
+.rrow .amt { font-variant-numeric:tabular-nums; font-weight:620; }
+.picker { display:flex; gap:5px; flex-wrap:wrap; margin-left:auto; }
 .nodata { text-align:center; padding:38px 16px; color:#a8a29a; font-size:13px;
   background:#faf9f7; border:1px dashed #e0dcd4; border-radius:11px; }
 </style>
@@ -231,6 +248,7 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
 <nav class="nav" id="nav">
   <button data-v="market" class="on">시장</button>
   <button data-v="chart">차트</button>
+  <button data-v="flow">수급</button>
   <button data-v="paper">신문 브리핑</button>
 </nav>
 
@@ -278,6 +296,35 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
   </div>
 </section>
 
+<section class="view" id="v-flow">
+  <div id="flowstamp" class="note" style="display:none"></div>
+
+  <div class="card" id="cardStrength">
+    <h2>매수세 · 매도세 <span class="tag blue">체결강도</span></h2>
+    <div id="strength"><div class="loading">불러오는 중…</div></div>
+    <div class="foot">체결강도는 실제로 체결된 물량 중 사자 쪽이 얼마나 셌는지를 나타냅니다.
+      <b>100이 넘으면 매수 우세</b>, 낮으면 매도 우세입니다. 장중에만 움직입니다.</div>
+  </div>
+
+  <div class="card" id="cardRank">
+    <h2>외국인 · 기관 순매수 <span class="tag">ETF 제외</span></h2>
+    <div id="rank"><div class="loading">불러오는 중…</div></div>
+  </div>
+
+  <div class="card" id="cardDaily">
+    <h2>날짜별 수급
+      <span class="picker" id="stockPicker"></span>
+    </h2>
+    <div id="dailywrap"><div class="chartbox"><canvas id="dailyChart"></canvas></div>
+      <div class="legend">
+        <span><i style="background:#c0392b"></i>외국인</span>
+        <span><i style="background:#e0a33e"></i>기관</span>
+        <span><i style="background:#5a9bd8"></i>개인</span>
+        <span style="color:#a8a29a">0 위면 순매수, 아래면 순매도 (단위: 백만원)</span>
+      </div></div>
+  </div>
+</section>
+
 <section class="view" id="v-paper">
   <div class="card">
     <h2>신문 브리핑 <span class="tag" id="pdate">—</span></h2>
@@ -315,6 +362,9 @@ document.querySelectorAll("#nav button").forEach(b=>{
     // 차트는 화면에 보일 때 그려야 크기가 맞습니다
     if(b.dataset.v==="chart" && typeof drawHistory==="function" && MARKET){
       requestAnimationFrame(()=>{ drawHistory(); drawInvestor(); });
+    }
+    if(b.dataset.v==="flow" && typeof drawFlow==="function"){
+      requestAnimationFrame(()=>drawFlow());
     }
   };
   if(b.dataset.v===LS.get("view","market")) b.click();
@@ -393,6 +443,123 @@ function drawMarket(){
     </svg>
     <div class="gnum" style="color:${col}">${score.toFixed(0)}</div>
     <div class="glabel" style="color:${col}">${safe(label)}</div></div>` + right;
+}
+
+
+/* ============ 수급 (키움) ============ */
+let KIWOOM = null, dailyChart = null, 고른종목 = null;
+
+function 강도색(v){
+  if(v >= 130) return "#c0392b";
+  if(v >= 100) return "#d97b48";
+  if(v >= 80)  return "#8a857d";
+  return "#1c6fd0";
+}
+function 강도말(v){ return v >= 100 ? "매수 우세" : "매도 우세"; }
+
+function drawFlow(){
+  const stamp = document.getElementById("flowstamp");
+
+  if(!KIWOOM){
+    document.getElementById("strength").innerHTML =
+      '<div class="nodata"><b>아직 수급 자료가 없습니다.</b><br>' +
+      'PC에서 <b>▶수급 수집</b>을 실행하고 만들어진 파일을 올리면 채워집니다.</div>';
+    document.getElementById("rank").innerHTML = "";
+    document.getElementById("dailywrap").innerHTML = "";
+    document.getElementById("cardRank").style.display = "none";
+    document.getElementById("cardDaily").style.display = "none";
+    return;
+  }
+
+  // 언제 받은 자료인지 + 장중이었는지
+  const t = new Date(KIWOOM.asOf);
+  const 지난시간 = (Date.now() - t.getTime()) / 3600000;
+  const 장중 = (() => {
+    const h = t.getHours() + t.getMinutes()/60, 요일 = t.getDay();
+    return 요일 >= 1 && 요일 <= 5 && h >= 9 && h <= 15.5;
+  })();
+  stamp.style.display = "";
+  stamp.innerHTML = `<b>${t.toLocaleString("ko-KR")}</b> 에 받은 자료입니다` +
+    (장중 ? " · <b>장중</b> 수치라 체결강도가 살아 있습니다." : " · 장 마감 후라 체결강도는 그날 최종값입니다.") +
+    (지난시간 > 20 ? ` <span style="color:#b3261e">(${Math.floor(지난시간/24)}일 지났습니다. 다시 수집해 주세요.)</span>` : "");
+
+  // ── 체결강도 ──
+  const st = KIWOOM.체결강도 || [];
+  if(!st.length){
+    document.getElementById("strength").innerHTML = '<div class="loading">체결강도 자료가 없습니다.</div>';
+  } else {
+    document.getElementById("strength").innerHTML =
+      '<div class="sgrid">' + st.map(x => {
+        const c = 강도색(x.str);
+        const 폭 = clamp(x.str / 2, 3, 100);   // 200을 최대로 봅니다
+        return `<div class="scard">
+          <div><span class="nm">${safe(x.name)}</span><span class="grp">${safe(x.묶음||"")}</span></div>
+          <div class="big" style="color:${c}">${x.str != null ? x.str.toFixed(1) : "–"}</div>
+          <div class="stat" style="color:${c}">${x.str != null ? 강도말(x.str) : ""}</div>
+          <div class="sbar"><i style="width:${폭}%;background:${c}"></i><b></b></div>
+          <div class="smini"><span>5분 ${x.m5 ?? "–"}</span><span>60분 ${x.m60 ?? "–"}</span></div>
+          <div class="smini"><span>${nf(x.price)}원</span>
+            <span class="${cls(x.rate)}">${x.rate > 0 ? "+" : ""}${x.rate ?? "–"}%</span></div>
+        </div>`;
+      }).join("") + '</div>';
+  }
+
+  // ── 외국인·기관 순위 ──
+  const R = KIWOOM.수급순위;
+  const box = document.getElementById("rank");
+  if(!R){ document.getElementById("cardRank").style.display = "none"; }
+  else {
+    document.getElementById("cardRank").style.display = "";
+    const 표 = (제목, 목록, 부호) => `<div><h4>${제목}</h4>` +
+      (목록||[]).map(r => `<div class="rrow">
+        <div><span class="nm2">${safe(r.name)}</span><span class="code">${r.code}</span>
+          <span class="${cls(r.등락률)}" style="font-size:11px;margin-left:6px">${r.등락률>0?"+":""}${r.등락률}%</span></div>
+        <div class="amt ${부호>0?"up":"down"}">${부호>0?"+":""}${nf(Math.round((부호>0?1:1)*(제목.includes("외국인")?r.외국인:r.기관)))}</div>
+      </div>`).join("") + '</div>';
+    box.innerHTML = '<div class="rank2">' +
+      표("외국인 순매수", R.외국인매수, 1) + 표("외국인 순매도", R.외국인매도, -1) +
+      표("기관 순매수",   R.기관매수,   1) + 표("기관 순매도",   R.기관매도,   -1) +
+      '</div><div class="foot">단위: 백만원 · 최근 5거래일 누적</div>';
+  }
+
+  // ── 날짜별 수급 ──
+  const D = KIWOOM.날짜별수급 || {};
+  const 코드들 = Object.keys(D);
+  if(!코드들.length){ document.getElementById("cardDaily").style.display = "none"; return; }
+  document.getElementById("cardDaily").style.display = "";
+  if(!고른종목 || !D[고른종목]) 고른종목 = LS.get("flowstock", 코드들[0]);
+  if(!D[고른종목]) 고른종목 = 코드들[0];
+
+  document.getElementById("stockPicker").innerHTML = 코드들.map(c =>
+    `<button class="seg ${c===고른종목?"on":""}" data-c="${c}">${safe(D[c].name)}</button>`).join("");
+  document.querySelectorAll("#stockPicker .seg").forEach(b => b.onclick = () => {
+    고른종목 = b.dataset.c; LS.set("flowstock", 고른종목); drawFlow();
+  });
+
+  const d = D[고른종목];
+  document.getElementById("dailywrap").innerHTML =
+    '<div class="chartbox"><canvas id="dailyChart"></canvas></div>' +
+    '<div class="legend"><span><i style="background:#c0392b"></i>외국인</span>' +
+    '<span><i style="background:#e0a33e"></i>기관</span>' +
+    '<span><i style="background:#5a9bd8"></i>개인</span>' +
+    '<span style="color:#a8a29a">0 위면 순매수, 아래면 순매도 (단위: 백만원)</span></div>';
+
+  if(dailyChart) dailyChart.destroy();
+  dailyChart = new Chart(document.getElementById("dailyChart"), {
+    type:"bar",
+    data:{ labels: d.d.map(shortDate), datasets:[
+      { label:"외국인", data:d.외국인, backgroundColor:"#c0392b", borderRadius:2 },
+      { label:"기관",   data:d.기관,   backgroundColor:"#e0a33e", borderRadius:2 },
+      { label:"개인",   data:d.개인,   backgroundColor:"#5a9bd8", borderRadius:2 },
+    ]},
+    options: baseOpts({ plugins:{ legend:{display:false}, tooltip:{
+      backgroundColor:"#1c1b19", padding:9, cornerRadius:7, titleFont:FONT, bodyFont:FONT,
+      callbacks:{ label: c => ` ${c.dataset.label}  ${c.parsed.y>0?"+":""}${c.parsed.y.toLocaleString("ko-KR")}` }}},
+      scales:{ x:{ grid:{display:false}, ticks:{ font:FONT, color:"#a8a29a", maxRotation:0, autoSkipPadding:18 } },
+        y:{ grid:{color:"#f0ede7"}, border:{display:false},
+            ticks:{ font:FONT, color:"#a8a29a", callback:v=>v.toLocaleString("ko-KR") } } }
+    })
+  });
 }
 
 /* 신문 브리핑 */
@@ -625,6 +792,7 @@ async function boot(){
     document.getElementById("indices").innerHTML = '<div class="err">시세 파일을 불러오지 못했습니다.</div>';
   }
   try { BRIEFS = await (await fetch("data/briefs.json" + bust)).json(); } catch(e) { BRIEFS = {}; }
+  try { KIWOOM = await (await fetch("data/kiwoom.json" + bust)).json(); } catch(e) { KIWOOM = null; }
 
   if (MARKET) {
     const t = new Date(MARKET.asOf);
@@ -638,6 +806,9 @@ async function boot(){
     drawMarket();
     restoreSegs();
     if(document.getElementById("v-chart").classList.contains("on")){ drawHistory(); drawInvestor(); }
+  }
+  if(document.getElementById("v-flow").classList.contains("on")){ drawFlow(); }
+  {
   }
   const have = dates();
   if (have.length) {
