@@ -36,6 +36,27 @@ const ALLOWED = {
 /* 혹시라도 주문 계열이 들어오면 이중으로 막습니다 */
 const BLOCK = /^(kt1000[0-9]|kt5000[0-3]|kt1000[6-9])$/i;
 
+
+/* 환경변수가 왜 안 보이는지 알려주는 도우미.
+   ★ 값은 절대 내보내지 않습니다. 이름과 글자 수만 알려줍니다. */
+function envDiagnosis() {
+  const want = ["KIWOOM_APP_KEY", "KIWOOM_SECRET"];
+  const found = Object.keys(process.env)
+    .filter(k => /KIWOOM|KIS_|APP_KEY|APPKEY|SECRET/i.test(k))
+    .sort();
+  return {
+    필요한이름: want,
+    실제찾은이름: found.length ? found : "(비슷한 이름이 하나도 없습니다)",
+    이름별상태: found.reduce((o, k) => {
+      const v = process.env[k] || "";
+      o[k] = v ? `값 있음 (${v.length}글자)` : "비어 있음";
+      return o;
+    }, {}),
+    환경: process.env.VERCEL_ENV || "(모름)",
+    맞는지: want.every(k => (process.env[k] || "").length > 0),
+  };
+}
+
 /* ── 접근토큰 ─────────────────────────────────────────────
    토큰은 하루짜리입니다. 함수 인스턴스가 살아 있는 동안 재사용합니다.
    키움은 토큰 발급 횟수에 제한이 있어 매번 새로 받으면 안 됩니다. */
@@ -130,7 +151,16 @@ export default async function handler(req, res) {
         note: "주문 계열 API는 허용 목록에 없어 호출할 수 없습니다.",
       });
     } catch (e) {
-      return res.status(500).json({ ok: false, error: String(e.message || e) });
+      return res.status(500).json({
+        ok: false,
+        error: String(e.message || e),
+        진단: envDiagnosis(),
+        확인하세요: [
+          "베르셀 Settings → Environment Variables 에서 이름이 정확한지",
+          "Production 에 체크되어 있는지",
+          "변수를 넣은 뒤 Deployments 에서 Redeploy 를 했는지",
+        ],
+      });
     }
   }
 
