@@ -2,9 +2,10 @@ name: 시세 자동 갱신
 
 on:
   schedule:
-    - cron: "10 7 * * 1-5"
-    - cron: "0 22 * * 0-4"
-  workflow_dispatch:
+    # 시간은 세계표준시(UTC)로 적습니다. 한국시간 = UTC + 9시간
+    - cron: "10 7 * * 1-5"   # 한국시간 평일 오후 4시 10분 (장 마감 후)
+    - cron: "0 22 * * 0-4"   # 한국시간 평일 아침 7시 (전날 미국장 마감 후)
+  workflow_dispatch:          # 버튼으로 직접 실행할 때 사용
 
 permissions:
   contents: write
@@ -29,8 +30,8 @@ jobs:
 
       - name: 결과 저장
         run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/market.json
-          git diff --staged --quiet || git commit -m "시세 갱신"
+          git diff --staged --quiet || git commit -m "시세 갱신 $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M')"
           git push
