@@ -57,6 +57,24 @@ function envDiagnosis() {
   };
 }
 
+
+/* 키움이 준 오류 번호를 쉬운 말로 풀어줍니다 */
+function 설명(code, msg) {
+  const 안내 = {
+    2: "보낸 값의 이름이 키움이 기대하는 것과 다릅니다.",
+    3: "키는 제대로 전달됐지만 키움이 이 접속을 거부했습니다.\n" +
+       "→ 8050(지정단말기 인증 실패)이면 키움 계정 쪽 설정 문제입니다.\n" +
+       "   ① 키움 OpenAPI 포털에서 '접속 허용 IP'가 등록돼 있는지\n" +
+       "   ② 계좌에 '지정단말 서비스'(등록한 PC에서만 접속 허용)가 켜져 있는지\n" +
+       "   ③ 실전투자용 키가 맞는지 (모의투자 키는 mockapi 주소를 씁니다)\n" +
+       "   이 서버는 베르셀에서 도는데 접속 IP가 매번 바뀝니다.\n" +
+       "   키움이 고정 IP를 요구하면 다른 방식이 필요합니다.",
+    8: "접근토큰이 만료됐거나 잘못됐습니다.",
+  };
+  const 부연 = 안내[code] ? "\n\n[쉬운 설명] " + 안내[code] : "";
+  return `[${code}] ${msg || ""}${부연}`;
+}
+
 /* ── 접근토큰 ─────────────────────────────────────────────
    토큰은 하루짜리입니다. 함수 인스턴스가 살아 있는 동안 재사용합니다.
    키움은 토큰 발급 횟수에 제한이 있어 매번 새로 받으면 안 됩니다. */
@@ -75,41 +93,30 @@ async function getToken() {
     throw new Error("환경변수 KIWOOM_APP_KEY 또는 KIWOOM_SECRET 이 없습니다");
   }
 
-  // 키움이 기다리는 항목 이름이 문서마다 다르게 적혀 있습니다.
-  // secretkey 를 먼저 쓰고, 안 되면 appsecretkey 로 한 번 더 시도합니다.
-  const 후보 = [
-    { grant_type: "client_credentials", appkey: key, secretkey: secret },
-    { grant_type: "client_credentials", appkey: key, appsecretkey: secret },
-  ];
+  // ★ 확인된 형식입니다 (2026-08-05 실측)
+  //   JSON 본문 + secretkey  →  파라미터 검사 통과
+  //   appsecretkey / appsecret → 8020 오류
+  //   form-urlencoded → HTTP 415 거부
+  const r = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json;charset=UTF-8" },
+    body: JSON.stringify({
+      grant_type: "client_credentials",
+      appkey: key,
+      secretkey: secret,
+    }),
+  });
 
-  let token = null, 마지막오류 = "", 성공한형식 = "";
-  for (const payload of 후보) {
-    const r = await fetch(TOKEN_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json;charset=UTF-8" },
-      body: JSON.stringify(payload),
-    });
-    const text = await r.text();
-    let j;
-    try { j = JSON.parse(text); }
-    catch (e) { 마지막오류 = `토큰 응답이 JSON이 아닙니다 (HTTP ${r.status}): ${text.slice(0, 200)}`; continue; }
+  const text = await r.text();
+  let j;
+  try { j = JSON.parse(text); }
+  catch (e) { throw new Error(`토큰 응답이 JSON이 아닙니다 (HTTP ${r.status}): ${text.slice(0, 200)}`); }
 
-    // 키움은 성공 시 return_code 0, 토큰은 token 필드에 담겨 옵니다
-    const t = j.token || j.access_token;
-    if (t) {
-      token = t;
-      성공한형식 = Object.keys(payload).find(k => k !== "grant_type" && k !== "appkey");
-      lastTokenShape = 성공한형식;
-      var 응답 = j;
-      break;
-    }
-    마지막오류 = `[${j.return_code}] ${j.return_msg || text.slice(0, 200)}`;
-  }
-
+  const token = j.token || j.access_token;
   if (!token) {
-    throw new Error(`토큰 발급 실패 ${마지막오류}`);
+    throw new Error(`토큰 발급 실패 ${설명(j.return_code, j.return_msg)}`);
   }
-  const j = 응답;
+  lastTokenShape = "secretkey";
 
   cachedToken = token;
   // 유효기간보다 10분 일찍 만료 처리해 경계에서 실패하지 않게 합니다
@@ -147,6 +154,29 @@ async function callKiwoom(apiId, body, contYn, nextKey) {
   };
 }
 
+
+
+/* 이 서버가 바깥으로 나갈 때 쓰는 IP를 알아냅니다.
+   키움에 등록한 IP와 이게 같아야 통과합니다. */
+async function 나가는IP() {
+  const 후보 = [
+    ["ipify",   "https://api.ipify.org?format=json", j => j.ip],
+    ["ipinfo",  "https://ipinfo.io/json",            j => j.ip],
+    ["ifconfig","https://ifconfig.co/json",          j => j.ip],
+  ];
+  for (const [이름, url, 뽑기] of 후보) {
+    try {
+      const c = new AbortController();
+      const t = setTimeout(() => c.abort(), 6000);
+      const r = await fetch(url, { signal: c.signal });
+      clearTimeout(t);
+      const j = await r.json();
+      const ip = 뽑기(j);
+      if (ip) return { ip, 확인처: 이름 };
+    } catch (e) { /* 다음 후보로 */ }
+  }
+  return { ip: null, 확인처: "확인 실패" };
+}
 
 /* 어떤 형식이 통하는지 한 번에 다 시험합니다.
    ★ 키 값은 절대 내보내지 않습니다. */
@@ -212,7 +242,10 @@ async function 형식진단() {
   }
 
   const 성공한것 = 결과.find(r => r.성공);
+  const ipInfo = await 나가는IP();
   return {
+    이서버가나가는IP: ipInfo.ip,
+    IP안내: "키움 포털에 등록한 IP와 위 주소가 같은지 확인하세요.",
     값점검,
     시도결과: 결과,
     결론: 성공한것
@@ -242,9 +275,12 @@ export default async function handler(req, res) {
   // ── 점검 모드: 설정이 제대로 됐는지만 확인 ──
   if (q.check === "1") {
     try {
+      const ipInfo = await 나가는IP();
       await getToken();
       return res.status(200).json({
         ok: true,
+        이서버가나가는IP: ipInfo.ip,
+        IP확인처: ipInfo.확인처,
         message: "키움 접속 정상. 접근토큰을 받았습니다.",
         server: "실전투자 (api.kiwoom.com)",
         토큰항목이름: lastTokenShape,
@@ -252,9 +288,12 @@ export default async function handler(req, res) {
         note: "주문 계열 API는 허용 목록에 없어 호출할 수 없습니다.",
       });
     } catch (e) {
+      const ipInfo2 = await 나가는IP().catch(() => ({ ip: null }));
       return res.status(500).json({
         ok: false,
         error: String(e.message || e),
+        이서버가나가는IP: ipInfo2.ip,
+        IP안내: "키움에 등록한 IP와 위 주소가 같아야 합니다. 다르면 등록해 주세요.",
         진단: envDiagnosis(),
         확인하세요: [
           "베르셀 Settings → Environment Variables 에서 이름이 정확한지",
