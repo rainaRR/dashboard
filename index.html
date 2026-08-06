@@ -203,6 +203,13 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
 .seg.on { background:#1c1b19; color:#fff; border-color:#1c1b19; }
 .legend { display:flex; gap:14px; flex-wrap:wrap; font-size:11.5px; color:#6f6a63; margin-top:9px; }
 .legend i { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; vertical-align:-1px; }
+.hl { font-size:10.5px; color:#8a857d; margin-top:5px; display:flex;
+  justify-content:space-between; gap:6px; font-variant-numeric:tabular-nums; }
+.hl b { font-weight:650; }
+.cnnprev { display:flex; gap:12px; flex-wrap:wrap; font-size:11.5px; color:#8a857d;
+  margin-top:9px; font-variant-numeric:tabular-nums; }
+.cnnprev span b { color:#3f3b35; font-weight:650; }
+.srcnote { font-size:10.5px; color:#a8a29a; margin-top:7px; }
 .nodata { text-align:center; padding:38px 16px; color:#a8a29a; font-size:13px;
   background:#faf9f7; border:1px dashed #e0dcd4; border-radius:11px; }
 </style>
@@ -230,7 +237,7 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
 <section class="view on" id="v-market">
   <div class="card"><h2>시장 현황</h2><div class="idxrow" id="indices"><div class="loading">불러오는 중…</div></div>
     <div class="foot" id="idxfoot"></div></div>
-  <div class="card"><h2>공포 · 탐욕 게이지 <span class="tag">VIX 기반 자체 산출</span></h2>
+  <div class="card"><h2>공포 · 탐욕 지수 <span class="tag blue">CNN 원본</span></h2>
     <div class="gauge" id="fg"><div class="loading">불러오는 중…</div></div></div>
 </section>
 
@@ -247,8 +254,11 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
       <div class="legend">
         <span><i style="background:#c0392b"></i>코스피</span>
         <span><i style="background:#1c6fd0"></i>코스닥</span>
-        <span style="color:#a8a29a">두 지수를 각자 첫날 기준 100으로 맞춰 겹쳐 그렸습니다</span>
-      </div></div>
+        <span><i style="background:#e0a33e"></i>52주 전고점</span>
+        <span><i style="background:#8fa9cc"></i>52주 전저점</span>
+      </div>
+      <div id="hlsummary" class="foot"></div>
+      <div class="foot">두 지수를 각자 첫날 기준 100으로 맞춰 겹쳐 그렸습니다.</div></div>
   </div>
 
   <div class="card">
@@ -310,9 +320,17 @@ document.querySelectorAll("#nav button").forEach(b=>{
   if(b.dataset.v===LS.get("view","market")) b.click();
 });
 
-function rangeBar(p,lo,hi){ if(!lo||!hi||hi<=lo) return "";
-  return `<div class="barlbl">52주 위치</div><div class="range"><b style="left:${clamp((p-lo)/(hi-lo)*100,0,100)}%"></b></div>
-    <div class="bl"><span>${nf2(lo)}</span><span>${nf2(hi)}</span></div>`; }
+function rangeBar(x){
+  const p=x.price, lo=x.lo, hi=x.hi;
+  if(!lo||!hi||hi<=lo) return "";
+  const pos = clamp((p-lo)/(hi-lo)*100,0,100);
+  const fh = x.fromHi, fl = x.fromLo;
+  return `<div class="barlbl">52주 위치</div>
+    <div class="range"><b style="left:${pos}%"></b></div>
+    <div class="bl"><span>저 ${nf2(lo)}</span><span>고 ${nf2(hi)}</span></div>
+    ${(fh!==undefined&&fl!==undefined) ? `<div class="hl">
+       <span>전고점 대비 <b class="down">${fh.toFixed(1)}%</b></span>
+       <span>전저점 대비 <b class="up">+${fl.toFixed(1)}%</b></span></div>` : ""}`; }
 function breadthBar(a,u,d){ const t=(a||0)+(u||0)+(d||0); if(!t) return "";
   return `<div class="barlbl">상승 / 하락 비율</div>
     <div class="breadth"><i style="width:${a/t*100}%;background:#d0524a"></i><i style="width:${u/t*100}%;background:#ddd9d1"></i><i style="width:${d/t*100}%;background:#3f83d6"></i></div>
@@ -325,14 +343,44 @@ function drawMarket(){
     <div class="nm">${safe(x.nm)}</div><div class="px">${nf2(x.price)}</div>
     <div class="ch ${cls(x.change)}">${sgn(x.change)}${nf2(Math.abs(x.change))} (${x.rate>0?"+":""}${(x.rate||0).toFixed(2)}%)</div>
     ${x.adv!==undefined?breadthBar(x.adv,x.unch,x.dec):'<div class="barlbl" style="color:#c4bfb6">상승/하락 종목 수 미제공</div>'}
-    ${rangeBar(x.price,x.lo,x.hi)}</div>`).join("");
+    ${rangeBar(x)}</div>`).join("");
   document.getElementById("idxfoot").textContent =
     "국내 FinanceDataReader · 해외 Yahoo Finance · " + (MARKET.indices[0]||{}).asOf + " 종가 기준";
 
-  const g=MARKET.gauge, fg=document.getElementById("fg");
-  if(!g){ fg.innerHTML='<div class="loading">게이지를 계산할 수 없습니다.</div>'; return; }
-  const [lbl,col]=fgLabel(g.score);
-  const rad=(-90+g.score/100*180)*Math.PI/180, x=100+68*Math.sin(rad), y=100-68*Math.cos(rad);
+  const fg=document.getElementById("fg");
+  const C = MARKET.cnn;              // CNN 원본
+  const g = MARKET.gauge;            // 자체 계산 (참고용)
+
+  if(!C && !g){ fg.innerHTML='<div class="loading">게이지를 계산할 수 없습니다.</div>'; return; }
+
+  // CNN 값이 있으면 그것을 쓰고, 없으면 자체 계산으로 대체합니다
+  const score = C ? C.score : g.score;
+  const label = C ? C.label : fgLabel(g.score)[0];
+  const col   = fgLabel(score)[1];
+  const rad=(-90+score/100*180)*Math.PI/180, x=100+68*Math.sin(rad), y=100-68*Math.cos(rad);
+
+  let right = "";
+  if(C){
+    right = `<div class="factors">
+      <div class="cnnprev">
+        ${Object.entries(C.prev).map(([k,v])=>{
+          const d=(score-v);
+          return `<span>${safe(k)} <b>${v.toFixed(0)}</b> <em style="font-style:normal;color:${d>=0?'#c0392b':'#1c6fd0'}">${d>=0?'▲':'▼'}${Math.abs(d).toFixed(0)}</em></span>`;
+        }).join("")}
+      </div>
+      <div class="foot">CNN이 7가지 지표(주가 모멘텀·변동성·안전자산 수요 등)를 합쳐 매기는 값입니다.
+        0에 가까울수록 겁먹은 시장, 100에 가까울수록 과열된 시장입니다.</div>
+      ${g ? `<div class="srcnote">참고 — 제가 VIX와 S&P 모멘텀만으로 따로 계산한 값은 ${g.score}점입니다.
+        지표 수가 달라 차이가 납니다.</div>` : ""}
+      <div class="srcnote">출처: CNN Fear &amp; Greed Index · ${safe(C.asOf)} 기준</div>
+    </div>`;
+  } else {
+    right = `<div class="factors">${g.detail.map(r=>`<div class="fct"><span class="fname">${safe(r[0])}</span>
+      <span class="fbar"><i style="width:${r[1]}%;background:${fgLabel(r[1])[1]}"></i></span>
+      <span class="fval">${safe(r[2])}</span></div>`).join("")}
+      <div class="srcnote">CNN 원본을 가져오지 못해 자체 계산값을 표시합니다.</div></div>`;
+  }
+
   fg.innerHTML=`<div style="text-align:center">
     <svg viewBox="0 0 200 118" width="196" height="116">
       <path d="M20 100 A80 80 0 0 1 55.7 33.4" stroke="#1c6fd0" stroke-width="13" fill="none" stroke-linecap="round" opacity=".85"/>
@@ -343,12 +391,8 @@ function drawMarket(){
       <text x="20" y="115" font-size="9" fill="#a8a29a" text-anchor="middle">공포</text>
       <text x="180" y="115" font-size="9" fill="#a8a29a" text-anchor="middle">탐욕</text>
     </svg>
-    <div class="gnum" style="color:${col}">${g.score}</div>
-    <div class="glabel" style="color:${col}">${lbl}</div></div>
-    <div class="factors">${g.detail.map(r=>`<div class="fct"><span class="fname">${safe(r[0])}</span>
-      <span class="fbar"><i style="width:${r[1]}%;background:${fgLabel(r[1])[1]}"></i></span>
-      <span class="fval">${safe(r[2])}</span></div>`).join("")}
-      <div class="foot">지표를 0~100으로 환산해 평균한 값입니다. 낮을수록 겁먹은 시장, 높을수록 과열된 시장입니다.</div></div>`;
+    <div class="gnum" style="color:${col}">${score.toFixed(0)}</div>
+    <div class="glabel" style="color:${col}">${safe(label)}</div></div>` + right;
 }
 
 /* 신문 브리핑 */
@@ -491,9 +535,30 @@ function drawHistory(){
   if(kq) sets.push({ label:"코스닥", data:norm(cut(kq.v)), raw:cut(kq.v),
     borderColor:"#1c6fd0", backgroundColor:"#1c6fd0", borderWidth:2, pointRadius:0, tension:.15 });
 
+  // 코스피 기준 전고점·전저점을 가로선으로 얹습니다 (정규화 값으로 변환)
+  const kIdx = (MARKET.indices||[]).find(i=>i.nm==="KOSPI");
+  const kBase = ks ? cut(ks.v)[0] : null;
+  const marks = [];
+  if(kIdx && kBase && kIdx.hi && kIdx.lo){
+    const hN = kIdx.hi/kBase*100, lN = kIdx.lo/kBase*100;
+    marks.push({ label:`52주 전고점 ${nf2(kIdx.hi)}`, data:labels.map(()=>+hN.toFixed(2)),
+      borderColor:"#e0a33e", borderWidth:1.5, borderDash:[5,4], pointRadius:0, fill:false, tension:0 });
+    marks.push({ label:`52주 전저점 ${nf2(kIdx.lo)}`, data:labels.map(()=>+lN.toFixed(2)),
+      borderColor:"#8fa9cc", borderWidth:1.5, borderDash:[5,4], pointRadius:0, fill:false, tension:0 });
+  }
+
+  const sumEl = document.getElementById("hlsummary");
+  if(sumEl){
+    const parts = (MARKET.indices||[]).filter(i=>i.nm==="KOSPI"||i.nm==="KOSDAQ")
+      .filter(i=>i.fromHi!==undefined)
+      .map(i=>`${i.nm} — 전고점(${i.hiDate}) 대비 <b class="down">${i.fromHi.toFixed(1)}%</b>, `+
+               `전저점(${i.loDate}) 대비 <b class="up">+${i.fromLo.toFixed(1)}%</b>`);
+    sumEl.innerHTML = parts.join("<br>");
+  }
+
   if(histChart) histChart.destroy();
   histChart = new Chart(document.getElementById("histChart"), {
-    type:"line", data:{ labels, datasets:sets },
+    type:"line", data:{ labels, datasets:sets.concat(marks) },
     options: baseOpts({ plugins:{ legend:{display:false}, tooltip:{
       backgroundColor:"#1c1b19", padding:9, cornerRadius:7, titleFont:FONT, bodyFont:FONT,
       callbacks:{ label: c => {

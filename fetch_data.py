@@ -62,6 +62,22 @@ def pct(now, before):
     return round((now / before - 1) * 100, 2)
 
 
+
+def hi_lo(close):
+    """52주(약 250거래일) 전고점·전저점과, 지금이 거기서 얼마나 떨어져 있는지."""
+    yr = close.tail(250)
+    if len(yr) < 5:
+        return {}
+    price = float(yr.iloc[-1])
+    hi, lo = float(yr.max()), float(yr.min())
+    return {
+        "lo": round(lo, 2), "hi": round(hi, 2),
+        "hiDate": str(yr.idxmax().date()), "loDate": str(yr.idxmin().date()),
+        "fromHi": round((price / hi - 1) * 100, 2),   # 전고점 대비 (보통 음수)
+        "fromLo": round((price / lo - 1) * 100, 2),   # 전저점 대비 (보통 양수)
+    }
+
+
 def fetch_kr_indices():
     """코스피·코스닥. FinanceDataReader 사용."""
     import FinanceDataReader as fdr
@@ -76,13 +92,14 @@ def fetch_kr_indices():
             close = df["Close"].dropna()
             price, prev = float(close.iloc[-1]), float(close.iloc[-2])
             yr = close.tail(250)
-            out.append({
+            row = {
                 "nm": name, "price": round(price, 2),
                 "change": round(price - prev, 2), "rate": pct(price, prev),
-                "lo": round(float(yr.min()), 2), "hi": round(float(yr.max()), 2),
                 "src": "FinanceDataReader",
                 "asOf": str(df.index[-1].date()),
-            })
+            }
+            row.update(hi_lo(close))
+            out.append(row)
             note(f"[성공] {name} {price:,.2f}")
         except Exception as e:
             note(f"[실패] {name}: {type(e).__name__} {e}")
@@ -106,14 +123,15 @@ def fetch_us_indices():
                        "ma200": round(float(close.tail(200).mean()), 2)}
                 note(f"[성공] VIX {price:.2f}")
                 continue
-            out.append({
+            row = {
                 "nm": name, "price": round(price, 2),
                 "change": round(price - prev, 2), "rate": pct(price, prev),
-                "lo": round(float(close.min()), 2), "hi": round(float(close.max()), 2),
                 "ma200": round(float(close.tail(200).mean()), 2),
                 "src": "Yahoo Finance",
                 "asOf": str(close.index[-1].date()),
-            })
+            }
+            row.update(hi_lo(close))
+            out.append(row)
             note(f"[성공] {name} {price:,.2f}")
         except Exception as e:
             note(f"[실패] {name}: {type(e).__name__} {e}")
@@ -208,6 +226,58 @@ def fetch_investor():
     return out or None
 
 
+
+CNN_URL = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
+
+
+def fetch_cnn_fng():
+    """CNN 공포·탐욕지수 원본을 가져옵니다.
+    CNN이 자기 웹페이지에 쓰는 공개 주소입니다. 문서화된 API가 아니라
+    언제든 막히거나 형태가 바뀔 수 있습니다. 실패해도 나머지는 정상 동작합니다."""
+    import urllib.request, json as _json
+    req = urllib.request.Request(CNN_URL, headers={
+        # 브라우저인 척해야 응답합니다
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                      "(KHTML, like Gecko) Chrome/125.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://edition.cnn.com/markets/fear-and-greed",
+    })
+    with urllib.request.urlopen(req, timeout=25) as r:
+        raw = r.read().decode("utf-8", "replace")
+
+    # 응답이 커서 통째로 파싱하면 무거우므로 필요한 부분만 떼어냅니다
+    m = re.search(r'"fear_and_greed":\s*(\{.*?\})', raw)
+    if not m:
+        raise ValueError("응답에서 지수를 찾지 못했습니다")
+    fg = _json.loads(m.group(1))
+
+    KOR = {"extreme fear": "극단적 공포", "fear": "공포", "neutral": "중립",
+           "greed": "탐욕", "extreme greed": "극단적 탐욕"}
+    out = {
+        "score": round(float(fg["score"]), 1),
+        "rating": fg.get("rating", ""),
+        "label": KOR.get(fg.get("rating", ""), fg.get("rating", "")),
+        "asOf": str(fg.get("timestamp", ""))[:10],
+        "prev": {
+            "전일":   round(float(fg["previous_close"]), 1),
+            "1주 전": round(float(fg["previous_1_week"]), 1),
+            "1개월 전": round(float(fg["previous_1_month"]), 1),
+            "1년 전": round(float(fg["previous_1_year"]), 1),
+        },
+        "src": "CNN",
+    }
+
+    # 최근 3개월 흐름 (그래프용)
+    pairs = re.findall(r'\{"x":\s*([\d.]+),\s*"y":\s*([\d.]+)', raw)
+    hist = [[int(float(x) / 1000), round(float(y), 1)] for x, y in pairs]
+    hist.sort(key=lambda r: r[0])          # 오래된 것부터
+    if hist:
+        out["hist"] = hist[-90:]           # 최근 90일치만
+
+    note(f"[성공] CNN 공포탐욕지수 {out['score']} ({out['label']})")
+    return out
+
+
 def gauge(vix, us, kr_breadth=None):
     """공포·탐욕 게이지. 0=극단적 공포, 100=극단적 탐욕."""
     def clamp(v):
@@ -250,6 +320,7 @@ def main():
     stocks  = guarded(fetch_stocks,     240, "종목 시세", {})
     history = guarded(fetch_history,    120, "차트 히스토리", {})
     investor= guarded(fetch_investor,   120, "투자자별 매매", None)
+    cnn     = guarded(fetch_cnn_fng,     40, "CNN 공포탐욕지수", None)
 
     # 하나라도 실패하면 지난번 값을 그대로 둡니다. 빈 화면을 보여주지 않기 위해서입니다.
     if not kr and prev.get("indices"):
@@ -267,10 +338,14 @@ def main():
     if not investor and prev.get("investor"):
         investor = prev["investor"]
         note("[대체] 투자자별 매매는 지난번 값을 유지합니다")
+    if not cnn and prev.get("cnn"):
+        cnn = prev["cnn"]
+        note("[대체] CNN 지수는 지난번 값을 유지합니다")
 
     data = {
         "asOf": datetime.datetime.now(KST).isoformat(timespec="seconds"),
         "indices": kr + us,
+        "cnn": cnn,
         "gauge": gauge(vix, us),
         "stocks": stocks,
         "history": history,
@@ -279,7 +354,9 @@ def main():
     }
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     json.dump(data, open(OUT, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    note(f"[완료] 저장 · 지수 {len(data['indices'])}개 · 종목 {len(stocks)}개 · 차트 {len(history or {})}개 · 투자자 {len(investor or {})}개")
+    note(f"[완료] 저장 · 지수 {len(data['indices'])}개 · 종목 {len(stocks)}개 · "
+         f"차트 {len(history or {})}개 · 투자자 {len(investor or {})}개 · "
+         f"CNN {'있음' if cnn else '없음'}")
 
     if not data["indices"]:
         note("[경고] 지수를 하나도 못 가져왔습니다")
