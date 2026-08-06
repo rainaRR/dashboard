@@ -578,8 +578,8 @@ function drawInvestor(){
   const wrap = document.getElementById("invwrap");
   if(!I || !I[invMarket]){
     wrap.innerHTML = '<div class="nodata"><b>준비 중입니다.</b><br>' +
-      '한국거래소가 이 자료에 로그인을 요구하도록 바꿔서,<br>' +
-      '한국투자증권 API를 연결한 뒤에 채워집니다.</div>';
+      '한국거래소가 이 자료에 로그인을 요구하도록 바뀌어서,<br>' +
+      '키움 API 연결이 끝나면 채워집니다.</div>';
     return;
   }
   const d = I[invMarket];
