@@ -335,9 +335,13 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
   <div id="flowstamp" class="note" style="display:none"></div>
 
   <div class="card" id="cardStrength">
-    <h2>매수 · 매도 강도 <span class="tag blue">체결강도</span><span id="liveTag"></span></h2>
+    <h2>매수 · 매도 강도 <span class="tag blue">체결강도</span><span id="liveTag"></span>
+      <span class="segbar" id="sortStrength">
+        <button class="seg on" data-s="pick">담은 순</button>
+        <button class="seg" data-s="str">강도순</button>
+      </span></h2>
     <div class="srchbox">
-      <input id="stockSearch" placeholder="종목 검색 — 삼성전자 / 005930 / SAMSUNG / ㅅㅅㅈㅈ" autocomplete="off">
+      <input id="stockSearch" placeholder="종목 검색해서 즐겨찾기에 담기 — 삼성전자 / 005930 / SAMSUNG / ㅅㅅㅈㅈ" autocomplete="off">
       <div class="sugg" id="sugg" style="display:none"></div>
     </div>
     <div class="picked" id="picked"></div>
@@ -351,18 +355,6 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
     <div id="rank"><div class="loading">불러오는 중…</div></div>
   </div>
 
-  <div class="card" id="cardDaily">
-    <h2>날짜별 수급
-      <span class="picker" id="stockPicker"></span>
-    </h2>
-    <div id="dailywrap"><div class="chartbox"><canvas id="dailyChart"></canvas></div>
-      <div class="legend">
-        <span><i style="background:#c0392b"></i>외국인</span>
-        <span><i style="background:#e0a33e"></i>기관</span>
-        <span><i style="background:#5a9bd8"></i>개인</span>
-        <span style="color:#a8a29a">0 위면 순매수, 아래면 순매도 (단위: 백만원)</span>
-      </div></div>
-  </div>
 </section>
 
 <section class="view" id="v-paper">
@@ -493,7 +485,7 @@ function drawMarket(){
 /* ============ 수급 (키움) ============ */
 /* ── 종목 검색 (한글·영문·코드·초성) ── */
 let STOCKS = [], 고른목록 = LS.get("watchlist", []);
-const 최대 = 12;
+let 정렬방식 = LS.get("sortStr", "pick");
 
 const 초성표 = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ".split("");
 function 초성뽑기(t){
@@ -537,7 +529,7 @@ function 고른목록그리기(){
   if(!box) return;
   box.innerHTML = 고른목록.map(t =>
     `<span class="pchip">${safe(t.n)}<span class="x" data-c="${t.c}">×</span></span>`).join("") +
-    (고른목록.length ? `<span class="pcount">${고른목록.length} / ${최대}</span>` : "");
+    (고른목록.length ? `<span class="pcount">${고른목록.length}개</span>` : "");
   box.querySelectorAll(".x").forEach(x => x.onclick = () => {
     고른목록 = 고른목록.filter(t => t.c !== x.dataset.c);
     LS.set("watchlist", 고른목록); 고른목록그리기(); drawFlow();
@@ -565,7 +557,6 @@ function 검색붙이기(){
   };
   const 담기 = t => {
     if(고른목록.some(x => x.c === t.c)) { inp.value=""; 닫기(); return; }
-    if(고른목록.length >= 최대){ alert(`최대 ${최대}개까지 담을 수 있습니다.`); return; }
     고른목록.push({ c:t.c, n:t.n });
     LS.set("watchlist", 고른목록);
     inp.value = ""; 닫기(); 고른목록그리기(); drawFlow();
@@ -603,7 +594,40 @@ function 실시간켜기(){
   }, 60000);   // 1분마다 새 파일이 올라왔는지 확인
 }
 
-let KIWOOM = null, dailyChart = null, 고른종목 = null;
+let KIWOOM = null;
+
+
+/* 강도 카드 한 장 */
+function 강도카드(x){
+  if(x.미수집) return `<div class="scard" style="opacity:.55">
+    <div><span class="nm">${safe(x.name)}</span><span class="code">${x.code}</span></div>
+    <div class="big" style="color:#c4bfb6">–</div>
+    <div class="stat" style="color:#a8a29a">아직 자료 없음</div>
+    <div class="smini"><span style="font-size:9.5px">다음 수집 때 채워집니다</span></div>
+  </div>`;
+  const c = 강도색(x.str);
+  const 폭 = clamp(x.str / 2, 3, 100);   // 200을 최대로 봅니다
+  return `<div class="scard">
+    <div><span class="nm">${safe(x.name)}</span><span class="grp">${safe(x.묶음||"")}</span></div>
+    <div class="big" style="color:${c}">${x.str != null ? x.str.toFixed(1) : "–"}</div>
+    <div class="stat" style="color:${c}">${x.str != null ? 강도말(x.str) : ""}</div>
+    <div class="sbar"><i style="width:${폭}%;background:${c}"></i><b></b></div>
+    <div class="smini"><span>5분 ${x.m5 ?? "–"}</span><span>60분 ${x.m60 ?? "–"}</span></div>
+    <div class="smini"><span>${nf(x.price)}원</span>
+      <span class="${cls(x.rate)}">${x.rate > 0 ? "+" : ""}${x.rate ?? "–"}%</span></div>
+  </div>`;
+}
+
+/* 정렬 버튼 */
+function 정렬버튼붙이기(){
+  document.querySelectorAll("#sortStrength .seg").forEach(b => b.onclick = () => {
+    정렬방식 = b.dataset.s; LS.set("sortStr", 정렬방식);
+    document.querySelectorAll("#sortStrength .seg").forEach(x => x.classList.toggle("on", x === b));
+    drawFlow();
+  });
+  document.querySelectorAll("#sortStrength .seg").forEach(x =>
+    x.classList.toggle("on", x.dataset.s === 정렬방식));
+}
 
 function 강도색(v){
   if(v >= 130) return "#c0392b";
@@ -639,42 +663,29 @@ function drawFlow(){
     (장중 ? " · <b>장중</b> 수치라 체결강도가 살아 있습니다." : " · 장 마감 후라 체결강도는 그날 최종값입니다.") +
     (지난시간 > 20 ? ` <span style="color:#b3261e">(${Math.floor(지난시간/24)}일 지났습니다. 다시 수집해 주세요.)</span>` : "");
 
-  // ── 체결강도 ──
+  // ── 매수·매도 강도 (즐겨찾기 기준) ──
   const 수집됨 = KIWOOM.체결강도 || [];
-  // 고른 종목이 있으면 그 순서대로, 없으면 수집된 그대로
-  let st;
-  if(고른목록.length){
-    st = 고른목록.map(w => {
-      const found = 수집됨.find(x => x.code === w.c);
-      return found || { code:w.c, name:w.n, str:null, 미수집:true };
-    });
+  const 찾기맵 = {};
+  for(const x of 수집됨) 찾기맵[x.code] = x;
+  const 강도칸 = document.getElementById("strength");
+
+  if(고른목록.length === 0){
+    // 즐겨찾기가 비었으면 안내문 + 오늘 가장 센 종목 5개만
+    const 센것 = 수집됨.filter(x => x.str != null)
+      .sort((a,b) => b.str - a.str).slice(0, 5);
+    강도칸.innerHTML =
+      '<div class="nodata" style="margin-bottom:12px">' +
+      '<b>아직 담은 종목이 없습니다.</b><br>' +
+      '위 검색창에서 종목을 찾아 담으면 여기에 나옵니다.<br>' +
+      '<span style="font-size:11.5px">한글·영문·종목코드·초성(예: ㅎㅇㄴㅅ) 다 됩니다.</span></div>' +
+      (센것.length ? '<div class="foot" style="margin:0 0 7px">참고 — 오늘 매수세가 가장 센 종목 5개</div>' +
+        '<div class="sgrid">' + 센것.map(강도카드).join("") + '</div>' : "");
   } else {
-    st = 수집됨;
-  }
-  if(!st.length){
-    document.getElementById("strength").innerHTML =
-      '<div class="nodata">위 검색창에서 보고 싶은 종목을 담아보세요.<br>최대 12개까지 됩니다.</div>';
-  } else {
-    document.getElementById("strength").innerHTML =
-      '<div class="sgrid">' + st.map(x => {
-        if(x.미수집) return `<div class="scard" style="opacity:.55">
-          <div><span class="nm">${safe(x.name)}</span><span class="code">${x.code}</span></div>
-          <div class="big" style="color:#c4bfb6">–</div>
-          <div class="stat" style="color:#a8a29a">아직 자료 없음</div>
-          <div class="smini"><span style="font-size:9.5px">다음 수집 때 채워집니다</span></div>
-        </div>`;
-        const c = 강도색(x.str);
-        const 폭 = clamp(x.str / 2, 3, 100);   // 200을 최대로 봅니다
-        return `<div class="scard">
-          <div><span class="nm">${safe(x.name)}</span><span class="grp">${safe(x.묶음||"")}</span></div>
-          <div class="big" style="color:${c}">${x.str != null ? x.str.toFixed(1) : "–"}</div>
-          <div class="stat" style="color:${c}">${x.str != null ? 강도말(x.str) : ""}</div>
-          <div class="sbar"><i style="width:${폭}%;background:${c}"></i><b></b></div>
-          <div class="smini"><span>5분 ${x.m5 ?? "–"}</span><span>60분 ${x.m60 ?? "–"}</span></div>
-          <div class="smini"><span>${nf(x.price)}원</span>
-            <span class="${cls(x.rate)}">${x.rate > 0 ? "+" : ""}${x.rate ?? "–"}%</span></div>
-        </div>`;
-      }).join("") + '</div>';
+    let 목록 = 고른목록.map(w => 찾기맵[w.c] || { code:w.c, name:w.n, str:null, 미수집:true });
+    if(정렬방식 === "str"){
+      목록 = 목록.slice().sort((a,b) => (b.str ?? -1) - (a.str ?? -1));
+    }
+    강도칸.innerHTML = '<div class="sgrid">' + 목록.map(강도카드).join("") + '</div>';
   }
 
   // ── 외국인·기관 순위 ──
@@ -695,44 +706,6 @@ function drawFlow(){
       '</div><div class="foot">단위: 백만원 · 최근 5거래일 누적</div>';
   }
 
-  // ── 날짜별 수급 ──
-  const D = KIWOOM.날짜별수급 || {};
-  const 코드들 = Object.keys(D);
-  if(!코드들.length){ document.getElementById("cardDaily").style.display = "none"; return; }
-  document.getElementById("cardDaily").style.display = "";
-  if(!고른종목 || !D[고른종목]) 고른종목 = LS.get("flowstock", 코드들[0]);
-  if(!D[고른종목]) 고른종목 = 코드들[0];
-
-  document.getElementById("stockPicker").innerHTML = 코드들.map(c =>
-    `<button class="seg ${c===고른종목?"on":""}" data-c="${c}">${safe(D[c].name)}</button>`).join("");
-  document.querySelectorAll("#stockPicker .seg").forEach(b => b.onclick = () => {
-    고른종목 = b.dataset.c; LS.set("flowstock", 고른종목); drawFlow();
-  });
-
-  const d = D[고른종목];
-  document.getElementById("dailywrap").innerHTML =
-    '<div class="chartbox"><canvas id="dailyChart"></canvas></div>' +
-    '<div class="legend"><span><i style="background:#c0392b"></i>외국인</span>' +
-    '<span><i style="background:#e0a33e"></i>기관</span>' +
-    '<span><i style="background:#5a9bd8"></i>개인</span>' +
-    '<span style="color:#a8a29a">0 위면 순매수, 아래면 순매도 (단위: 백만원)</span></div>';
-
-  if(dailyChart) dailyChart.destroy();
-  dailyChart = new Chart(document.getElementById("dailyChart"), {
-    type:"bar",
-    data:{ labels: d.d.map(shortDate), datasets:[
-      { label:"외국인", data:d.외국인, backgroundColor:"#c0392b", borderRadius:2 },
-      { label:"기관",   data:d.기관,   backgroundColor:"#e0a33e", borderRadius:2 },
-      { label:"개인",   data:d.개인,   backgroundColor:"#5a9bd8", borderRadius:2 },
-    ]},
-    options: baseOpts({ plugins:{ legend:{display:false}, tooltip:{
-      backgroundColor:"#1c1b19", padding:9, cornerRadius:7, titleFont:FONT, bodyFont:FONT,
-      callbacks:{ label: c => ` ${c.dataset.label}  ${c.parsed.y>0?"+":""}${c.parsed.y.toLocaleString("ko-KR")}` }}},
-      scales:{ x:{ grid:{display:false}, ticks:{ font:FONT, color:"#a8a29a", maxRotation:0, autoSkipPadding:18 } },
-        y:{ grid:{color:"#f0ede7"}, border:{display:false},
-            ticks:{ font:FONT, color:"#a8a29a", callback:v=>v.toLocaleString("ko-KR") } } }
-    })
-  });
 }
 
 /* 신문 브리핑 */
@@ -1105,7 +1078,7 @@ async function boot(){
       }
     }
   }
-  검색붙이기(); 고른목록그리기(); 실시간켜기();
+  검색붙이기(); 고른목록그리기(); 정렬버튼붙이기(); 실시간켜기();
 
   if (MARKET) {
     const t = new Date(MARKET.asOf);
