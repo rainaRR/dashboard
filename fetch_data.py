@@ -267,12 +267,11 @@ def fetch_cnn_fng():
         "src": "CNN",
     }
 
-    # 최근 3개월 흐름 (그래프용)
-    pairs = re.findall(r'\{"x":\s*([\d.]+),\s*"y":\s*([\d.]+)', raw)
-    hist = [[int(float(x) / 1000), round(float(y), 1)] for x, y in pairs]
-    hist.sort(key=lambda r: r[0])          # 오래된 것부터
-    if hist:
-        out["hist"] = hist[-90:]           # 최근 90일치만
+    # 과거 흐름(hist)은 화면에서 쓰지 않으므로 담지 않습니다.
+    # 예전에는 담았는데, 정규식이 VIX·S&P500 등 다른 지표의 x/y까지 긁어와
+    # 엉뚱한 숫자(853.3, 7316.1 …)가 섞여 들어갔습니다. 그래서 뺐습니다.
+    # 나중에 그래프가 필요하면 "fear_and_greed_historical" 블록만 떼어내
+    # 그 안의 data 배열을 써야 합니다.
 
     note(f"[성공] CNN 공포탐욕지수 {out['score']} ({out['label']})")
     return out

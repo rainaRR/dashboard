@@ -456,9 +456,8 @@ function drawMarket(){
       </div>
       <div class="foot">CNN이 7가지 지표(주가 모멘텀·변동성·안전자산 수요 등)를 합쳐 매기는 값입니다.
         0에 가까울수록 겁먹은 시장, 100에 가까울수록 과열된 시장입니다.</div>
-      ${g ? `<div class="srcnote">참고 — 제가 VIX와 S&P 모멘텀만으로 따로 계산한 값은 ${g.score}점입니다.
-        지표 수가 달라 차이가 납니다.</div>` : ""}
-      <div class="srcnote">출처: CNN Fear &amp; Greed Index · ${safe(C.asOf)} 기준</div>
+      <div class="srcnote">출처: CNN Fear &amp; Greed Index · ${safe(C.asOf)} 기준${
+        C.받은시각 ? ` · ${safe(C.받은시각)}에 받아왔습니다` : ""}</div>
     </div>`;
   } else {
     right = `<div class="factors">${g.detail.map(r=>`<div class="fct"><span class="fname">${safe(r[0])}</span>
