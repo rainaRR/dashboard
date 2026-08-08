@@ -699,6 +699,20 @@ function 강도색(v){
   return "#1c6fd0";
 }
 function 강도말(v){ return v >= 100 ? "매수 우세" : "매도 우세"; }
+function 매수세참고제목(){
+  const 흐름날짜 = KIWOOM && KIWOOM.투자자흐름
+    ? Object.values(KIWOOM.투자자흐름).flatMap(x => Array.isArray(x.d) ? x.d : []).filter(Boolean)
+    : [];
+  const 시장날짜 = MARKET && Array.isArray(MARKET.indices)
+    ? MARKET.indices.filter(x => x.nm === "KOSPI" || x.nm === "KOSDAQ").map(x => x.asOf).filter(Boolean)
+    : [];
+  const raw = 흐름날짜.sort().at(-1) || 시장날짜.sort().at(-1) || (KIWOOM && KIWOOM.asOf);
+  const d = raw ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T12:00:00` : raw) : new Date();
+  const 요일 = ["일","월","화","수","목","금","토"][d.getDay()];
+  const mm = String(d.getMonth()+1).padStart(2,"0");
+  const dd = String(d.getDate()).padStart(2,"0");
+  return `참고 : ${mm}월${dd}일 ${요일}요일 매수세가 가장 센 종목 5개 후보`;
+}
 
 function drawFlow(){
   const stamp = document.getElementById("flowstamp");
@@ -742,7 +756,7 @@ function drawFlow(){
       '<b>아직 담은 종목이 없습니다.</b><br>' +
       '위 검색창에서 종목을 찾아 담으면 여기에 나옵니다.<br>' +
       '<span style="font-size:11.5px">한글·영문·종목코드·초성(예: ㅎㅇㄴㅅ) 다 됩니다.</span></div>' +
-      (센것.length ? '<div class="foot" style="margin:0 0 7px">참고 — 오늘 매수세가 가장 센 종목 5개</div>' +
+      (센것.length ? `<div class="foot" style="margin:0 0 7px">${매수세참고제목()}</div>` +
         '<div class="sgrid">' + 센것.map(강도카드).join("") + '</div>' : "");
   } else {
     let 목록 = 고른목록.map(w => 찾기맵[w.c] || { code:w.c, name:w.n, str:null, 미수집:true });
