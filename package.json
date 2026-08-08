@@ -1,5 +1,8 @@
 {
   "name": "my-dashboard",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "test": "node tools/check_project.mjs"
+  }
 }
