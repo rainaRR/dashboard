@@ -35,10 +35,17 @@ class Timeout(Exception):
     pass
 
 
+HAS_ALARM = hasattr(signal, "SIGALRM")   # 리눅스에만 있습니다. 윈도우에서는 없습니다.
+
+
 @contextmanager
 def limit(seconds, what):
     """정해진 시간 안에 안 끝나면 포기합니다.
     응답 없는 서버를 무한정 기다리다 전체가 멈추는 걸 막습니다."""
+    if not HAS_ALARM:                    # 윈도우에서 돌릴 때 전부 실패하지 않도록
+        yield
+        return
+
     def handler(signum, frame):
         raise Timeout(f"{what}: {seconds}초 초과")
     old = signal.signal(signal.SIGALRM, handler)
@@ -322,15 +329,20 @@ def main():
     cnn     = guarded(fetch_cnn_fng,     40, "CNN 공포탐욕지수", None)
 
     # 하나라도 실패하면 지난번 값을 그대로 둡니다. 빈 화면을 보여주지 않기 위해서입니다.
+    물려받음 = []          # 무엇을 지난번 값으로 때웠는지 기록합니다
+
     if not kr and prev.get("indices"):
         kr = [x for x in prev["indices"] if x["nm"] in ("KOSPI", "KOSDAQ")]
         note("[대체] 국내 지수는 지난번 값을 유지합니다")
+        물려받음.append("국내 지수")
     if not us and prev.get("indices"):
         us = [x for x in prev["indices"] if x["nm"] not in ("KOSPI", "KOSDAQ")]
         note("[대체] 해외 지수는 지난번 값을 유지합니다")
+        물려받음.append("해외 지수")
     if not stocks and prev.get("stocks"):
         stocks = prev["stocks"]
         note("[대체] 종목 시세는 지난번 값을 유지합니다")
+        물려받음.append("종목 시세")
     if not history and prev.get("history"):
         history = prev["history"]
         note("[대체] 차트 히스토리는 지난번 값을 유지합니다")
@@ -340,9 +352,20 @@ def main():
     if not cnn and prev.get("cnn"):
         cnn = prev["cnn"]
         note("[대체] CNN 지수는 지난번 값을 유지합니다")
+        물려받음.append("공포탐욕지수")
+
+    # 지수나 시세를 못 받아 지난번 값을 그대로 쓴 경우,
+    # 갱신 시각을 '지금'으로 찍으면 화면이 "방금 받은 최신 숫자"인 척하게 됩니다.
+    # 그러면 화면의 "오래됐습니다" 경고가 영영 안 뜹니다. 그래서 옛 시각을 그대로 둡니다.
+    if 물려받음 and prev.get("asOf"):
+        받은시각 = prev["asOf"]
+        note(f"[주의] {', '.join(물려받음)} 을(를) 못 받아 갱신 시각을 옛것으로 둡니다: {받은시각}")
+    else:
+        받은시각 = datetime.datetime.now(KST).isoformat(timespec="seconds")
 
     data = {
-        "asOf": datetime.datetime.now(KST).isoformat(timespec="seconds"),
+        "asOf": 받은시각,
+        "stale": 물려받음 or None,
         "indices": kr + us,
         "cnn": cnn,
         "gauge": gauge(vix, us),
@@ -352,7 +375,10 @@ def main():
         "log": log,
     }
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
-    json.dump(data, open(OUT, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    # allow_nan=False — 숫자 하나가 NaN 이면 브라우저가 파일 전체를 못 읽어
+    # 대시보드가 백지가 됩니다. 여기서 미리 걸러 냅니다.
+    json.dump(data, open(OUT, "w", encoding="utf-8"),
+              ensure_ascii=False, indent=1, allow_nan=False)
     note(f"[완료] 저장 · 지수 {len(data['indices'])}개 · 종목 {len(stocks)}개 · "
          f"차트 {len(history or {})}개 · 투자자 {len(investor or {})}개 · "
          f"CNN {'있음' if cnn else '없음'}")
