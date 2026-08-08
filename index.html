@@ -13,8 +13,6 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <style>
-body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30px; }
-
   :root { color-scheme: light; }
   * { box-sizing: border-box; }
   body {
@@ -30,7 +28,7 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
   /* ---- 앱 탭 ---- */
   .nav { display:flex; gap:4px; background:#eeebe5; padding:4px; border-radius:11px; margin-bottom:14px; }
   .nav button {
-    flex:1; border:0; background:transparent; padding:8px 6px; border-radius:8px;
+    flex:1; min-height:44px; border:0; background:transparent; padding:8px 6px; border-radius:8px;
     font-size:13px; font-weight:600; color:#7a756d; cursor:pointer;
     font-family:inherit; transition:background .12s, color .12s;
   }
@@ -262,8 +260,18 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
 .picker { display:flex; gap:5px; flex-wrap:wrap; margin-left:auto; }
 .nodata { text-align:center; padding:38px 16px; color:#a8a29a; font-size:13px;
   background:#faf9f7; border:1px dashed #e0dcd4; border-radius:11px; }
+.data-status { display:none; margin:0 0 12px; padding:9px 11px; border-radius:9px;
+  background:#fff4df; color:#704d00; border:1px solid #ead39f; font-size:12.5px; }
+.data-status.on { display:block; }
+.pickmsg { min-height:20px; margin-top:5px; color:#8a6100; font-size:12px; }
+.reload, .seg, .cal .arrow { min-height:40px; }
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
+  clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+button:focus-visible, input:focus-visible { outline:3px solid #8bb7ed; outline-offset:2px; }
+.sub, .barlbl, .bl, .smini, .foot, .srcnote, .legend, .nodata, .code { color:#6f6a63; }
+.tag, .day .w, .smini, .barlbl { font-size:11px; }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js"></script>
+<script src="vendor/chart.umd.js"></script>
 </head>
 <body>
 
@@ -271,19 +279,20 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
   <h1>내 대시보드</h1>
   <span class="sub" id="stamp">불러오는 중…</span>
   <span style="margin-left:auto; display:flex; gap:6px">
-    <button class="reload" id="installBtn" style="display:none">앱으로 설치</button>
-    <button class="reload" onclick="location.reload()">새로고침</button>
+    <button class="reload" id="installBtn" style="display:none" type="button">앱으로 설치</button>
+    <button class="reload" onclick="location.reload()" type="button">새로고침</button>
   </span>
 </div>
 
 <div id="alertbox"></div>
 <div id="stalebox"></div>
+<div id="dataStatus" class="data-status" role="status" aria-live="polite"></div>
 
-<nav class="nav" id="nav">
-  <button data-v="market" class="on">시장</button>
-  <button data-v="chart">지수</button>
-  <button data-v="flow">현황</button>
-  <button data-v="paper">신문</button>
+<nav class="nav" id="nav" aria-label="대시보드 메뉴">
+  <button data-v="market" class="on" type="button">시장</button>
+  <button data-v="chart" type="button">지수</button>
+  <button data-v="flow" type="button">현황</button>
+  <button data-v="paper" type="button">신문</button>
 </nav>
 
 <section class="view on" id="v-market">
@@ -296,7 +305,7 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
         <button class="seg" data-m="KOSDAQ">코스닥</button>
       </span>
     </h2>
-    <div id="invwrap"><div class="chartbox"><canvas id="invChart"></canvas></div>
+    <div id="invwrap"><div class="chartbox"><canvas id="invChart" role="img" aria-label="코스피와 코스닥의 외국인 기관 개인 순매수 막대 차트"></canvas></div>
       <div class="legend">
         <span><i style="background:#c0392b"></i>외국인</span>
         <span><i style="background:#e0a33e"></i>기관</span>
@@ -308,7 +317,7 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
 </section>
 
 <section class="view" id="v-chart">
-  <div class="card"><h2>공포 · 탐욕 지수 <span class="tag blue">CNN 원본</span></h2>
+  <div class="card"><h2>공포 · 탐욕 지수 <span class="tag blue" id="cnnSource">CNN 원본</span></h2>
     <div class="gauge" id="fg"><div class="loading">불러오는 중…</div></div></div>
   <div class="card">
     <h2>지수 추이
@@ -319,7 +328,7 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
         <button class="seg" data-p="22">1개월</button>
       </span>
     </h2>
-    <div id="histwrap"><div class="chartbox"><canvas id="histChart"></canvas></div>
+    <div id="histwrap"><div class="chartbox"><canvas id="histChart" role="img" aria-label="코스피와 코스닥 기간별 지수 추이 차트"></canvas></div>
       <div class="legend">
         <span><i style="background:#c0392b"></i>코스피</span>
         <span><i style="background:#1c6fd0"></i>코스닥</span>
@@ -327,7 +336,7 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
         <span><i style="background:#8fa9cc"></i>52주 전저점</span>
       </div>
       <div id="hlsummary" class="foot"></div>
-      <div class="foot">두 지수를 각자 첫날 기준 100으로 맞춰 겹쳐 그렸습니다.</div></div>
+      <div class="foot">두 지수를 각자 첫날 기준 100으로 맞췄습니다. 국내 지수의 마지막 점은 키움 기준 약 5~8분 지연 자료입니다.</div></div>
   </div>
 
 </section>
@@ -342,9 +351,11 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
         <button class="seg" data-s="str">강도순</button>
       </span></h2>
     <div class="srchbox">
-      <input id="stockSearch" placeholder="종목 검색해서 즐겨찾기에 담기 — 삼성전자 / 005930 / SAMSUNG / ㅅㅅㅈㅈ" autocomplete="off">
+      <label for="stockSearch" class="sr-only">즐겨찾기에 담을 종목 검색</label>
+      <input id="stockSearch" aria-describedby="pickmsg" placeholder="종목 검색 — 삼성전자 / 005930 / SAMSUNG / ㅅㅅㅈㅈ" autocomplete="off">
       <div class="sugg" id="sugg" style="display:none"></div>
     </div>
+    <div id="pickmsg" class="pickmsg" role="status" aria-live="polite">즐겨찾기는 최대 12개까지 담을 수 있습니다.</div>
     <div class="picked" id="picked"></div>
     <div id="strength"><div class="loading">불러오는 중…</div></div>
     <div class="foot">체결강도는 실제로 체결된 물량 중 사자 쪽이 얼마나 셌는지를 나타냅니다.
@@ -362,9 +373,9 @@ body { background:#f7f7f5; max-width:1180px; margin:0 auto; padding:14px 14px 30
   <div class="card">
     <h2>신문 브리핑 <span class="tag" id="pdate">—</span></h2>
     <div class="cal">
-      <button class="arrow" id="wprev">◀</button>
+      <button class="arrow" id="wprev" type="button" aria-label="이전 주">◀</button>
       <div class="days" id="caldays"></div>
-      <button class="arrow" id="wnext">▶</button>
+      <button class="arrow" id="wnext" type="button" aria-label="다음 주">▶</button>
     </div>
     <div class="calnote" id="calnote"></div>
     <div id="paperbody"><div class="loading">불러오는 중…</div></div>
@@ -384,6 +395,12 @@ const nf2 = n => (n===null||n===undefined||isNaN(n))?"–":Number(n).toLocaleStr
 const cls = v => v>0?"up":(v<0?"down":"flat");
 const sgn = v => v>0?"▲ ":v<0?"▼ ":"";
 const safe = s => (s||"").replace(/[<>&"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
+function 데이터상태(msg){
+  const el = document.getElementById("dataStatus");
+  if(!el) return;
+  el.textContent = msg || "";
+  el.classList.toggle("on", Boolean(msg));
+}
 
 let MARKET=null, BRIEFS={};
 
@@ -424,23 +441,29 @@ function breadthBar(a,u,d){ const t=(a||0)+(u||0)+(d||0); if(!t) return "";
 function fgLabel(s){ if(s<25)return["극단적 공포","#1c6fd0"]; if(s<45)return["공포","#4a8fd8"];
   if(s<55)return["중립","#8a857d"]; if(s<75)return["탐욕","#d97b48"]; return["극단적 탐욕","#c0392b"]; }
 
-function drawMarket(){
+function 합친지수(){
   const 키움지수 = new Map(((KIWOOM && KIWOOM.지수) || []).map(x=>[x.nm,x]));
-  const 화면지수 = MARKET.indices.map(x=>{
+  return (MARKET.indices||[]).map(x=>{
     const k=키움지수.get(x.nm);
-    return k ? Object.assign({},x,{adv:k.rising,dec:k.fall,unch:k.stdns}) : x;
+    return k ? Object.assign({},x,k,{adv:k.rising,dec:k.fall,unch:k.stdns,asOf:(KIWOOM||{}).asOf}) : x;
   });
+}
+function drawMarket(){
+  const 화면지수 = 합친지수();
   document.getElementById("indices").innerHTML = 화면지수.map(x=>`<div class="idx">
     <div class="nm">${safe(x.nm)}</div><div class="px">${nf2(x.price)}</div>
     <div class="ch ${cls(x.change)}">${sgn(x.change)}${nf2(Math.abs(x.change))} (${x.rate>0?"+":""}${(x.rate||0).toFixed(2)}%)</div>
     ${x.adv!==undefined?breadthBar(x.adv,x.unch,x.dec):'<div class="barlbl" style="color:#c4bfb6">상승/하락 종목 수 미제공</div>'}
     ${rangeBar(x)}</div>`).join("");
   document.getElementById("idxfoot").textContent =
-    "국내 FinanceDataReader · 해외 Yahoo Finance · " + (MARKET.indices[0]||{}).asOf + " 종가 기준";
+    "국내 지수는 키움 약 5~8분 지연 · 해외 지수는 Yahoo Finance 종가 · " +
+    ((KIWOOM&&KIWOOM.asOf) ? new Date(KIWOOM.asOf).toLocaleString("ko-KR") : (MARKET.indices[0]||{}).asOf);
 
   const fg=document.getElementById("fg");
   const C = MARKET.cnn;              // CNN 원본
   const g = MARKET.gauge;            // 자체 계산 (참고용)
+  const sourceTag = document.getElementById("cnnSource");
+  if(sourceTag) sourceTag.textContent = C ? "CNN 원본 · 하루 2회 확인" : "자체 계산 참고값";
 
   if(!C && !g){ fg.innerHTML='<div class="loading">게이지를 계산할 수 없습니다.</div>'; return; }
 
@@ -488,7 +511,10 @@ function drawMarket(){
 
 /* ============ 수급 (키움) ============ */
 /* ── 종목 검색 (한글·영문·코드·초성) ── */
-let STOCKS = [], 고른목록 = LS.get("watchlist", []);
+const 즐겨찾기최대 = 12;
+let STOCKS = [], 수집코드 = new Set(), 고른목록 = LS.get("watchlist", []);
+if(!Array.isArray(고른목록)) 고른목록 = [];
+고른목록 = 고른목록.slice(0, 즐겨찾기최대);
 let 정렬방식 = LS.get("sortStr", "pick");
 
 const 초성표 = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ".split("");
@@ -533,7 +559,7 @@ function 고른목록그리기(){
   if(!box) return;
   box.innerHTML = 고른목록.map(t =>
     `<span class="pchip">${safe(t.n)}<span class="x" data-c="${t.c}">×</span></span>`).join("") +
-    (고른목록.length ? `<span class="pcount">${고른목록.length}개</span>` : "");
+    (고른목록.length ? `<span class="pcount">${고른목록.length}/${즐겨찾기최대}개</span>` : "");
   box.querySelectorAll(".x").forEach(x => x.onclick = () => {
     고른목록 = 고른목록.filter(t => t.c !== x.dataset.c);
     LS.set("watchlist", 고른목록); 고른목록그리기(); drawFlow();
@@ -543,6 +569,7 @@ function 고른목록그리기(){
 function 검색붙이기(){
   const inp = document.getElementById("stockSearch");
   const box = document.getElementById("sugg");
+  const msg = document.getElementById("pickmsg");
   if(!inp || !box) return;
   let 결과 = [], 커서 = -1;
 
@@ -561,8 +588,15 @@ function 검색붙이기(){
   };
   const 담기 = t => {
     if(고른목록.some(x => x.c === t.c)) { inp.value=""; 닫기(); return; }
+    if(고른목록.length >= 즐겨찾기최대){
+      if(msg) msg.textContent = `최대 ${즐겨찾기최대}개입니다. 기존 종목 하나를 지운 뒤 추가해 주세요.`;
+      inp.value = ""; 닫기(); return;
+    }
     고른목록.push({ c:t.c, n:t.n });
     LS.set("watchlist", 고른목록);
+    if(msg) msg.textContent = 수집코드.has(t.c)
+      ? `${t.n}을(를) 즐겨찾기에 담았습니다.`
+      : `${t.n}은(는) 현재 오라클 자동 수집 200종목에 포함되지 않아 강도 자료가 표시되지 않을 수 있습니다.`;
     inp.value = ""; 닫기(); 고른목록그리기(); drawFlow();
   };
 
@@ -580,14 +614,14 @@ function 검색붙이기(){
 /* ── 장중이면 데이터를 주기적으로 다시 받습니다 ── */
 let 실시간타이머 = null;
 function 장중인가(){
-  const n = new Date(), 요일 = n.getDay(), h = n.getHours() + n.getMinutes()/60;
-  return 요일 >= 1 && 요일 <= 5 && h >= 9 && h <= 15.55;
+  const n = new Date(), 요일 = n.getDay(), 분 = n.getHours()*60 + n.getMinutes();
+  return 요일 >= 1 && 요일 <= 5 && 분 >= 9*60 && 분 <= 15*60+30;
 }
 function 실시간켜기(){
   const tag = document.getElementById("liveTag");
   if(실시간타이머) clearInterval(실시간타이머);
   if(!장중인가()){ if(tag) tag.innerHTML = ""; return; }
-  if(tag) tag.innerHTML = '<span class="tag red"><span class="livedot"></span>장중 실시간</span>';
+  if(tag) tag.innerHTML = '<span class="tag red"><span class="livedot"></span>약 5~8분 지연</span>';
   실시간타이머 = setInterval(async () => {
     if(!장중인가()){ clearInterval(실시간타이머); if(tag) tag.innerHTML=""; return; }
     await 새수급받기();
@@ -596,15 +630,18 @@ function 실시간켜기(){
 
 async function 새수급받기(){
   try {
-    const r = await fetch("data/kiwoom.json?v=" + Date.now(), {cache:"no-store"});
-    if(!r.ok) return;
+    const r = await fetch("data/kiwoom.json", {cache:"no-store"});
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
     const j = await r.json();
     if(j && j.asOf !== (KIWOOM||{}).asOf){
       KIWOOM = j;
+      const t = new Date(j.asOf);
+      if(!isNaN(t)) document.getElementById("stamp").textContent = "가장 최근 자료 " + t.toLocaleString("ko-KR");
       drawFlow();
       if(MARKET){ drawMarket(); 경보그리기(); drawInvestor(); }
     }
-  } catch(e){}
+    데이터상태("");
+  } catch(e){ 데이터상태("새 수급 자료를 확인하지 못했습니다. 현재 화면에는 마지막으로 받은 자료가 표시됩니다."); }
 }
 document.addEventListener("visibilitychange",()=>{
   if(!document.hidden){ 새수급받기(); 실시간켜기(); }
@@ -620,7 +657,7 @@ function 강도카드(x){
     <div><span class="nm">${safe(x.name)}</span><span class="code">${x.code}</span></div>
     <div class="big" style="color:#c4bfb6">–</div>
     <div class="stat" style="color:#a8a29a">아직 자료 없음</div>
-    <div class="smini"><span style="font-size:9.5px">다음 수집 때 채워집니다</span></div>
+    <div class="smini"><span>현재 자동 수집 대상이 아닙니다</span></div>
   </div>`;
   const c = 강도색(x.str);
   const 폭 = clamp(x.str / 2, 3, 100);   // 200을 최대로 봅니다
@@ -671,8 +708,8 @@ function drawFlow(){
   const t = new Date(KIWOOM.asOf);
   const 지난시간 = (Date.now() - t.getTime()) / 3600000;
   const 장중 = (() => {
-    const h = t.getHours() + t.getMinutes()/60, 요일 = t.getDay();
-    return 요일 >= 1 && 요일 <= 5 && h >= 9 && h <= 15.5;
+    const 분 = t.getHours()*60 + t.getMinutes(), 요일 = t.getDay();
+    return 요일 >= 1 && 요일 <= 5 && 분 >= 9*60 && 분 <= 15*60+30;
   })();
   stamp.style.display = "";
   stamp.innerHTML = `<b>${t.toLocaleString("ko-KR")}</b> 에 받은 자료입니다` +
@@ -842,14 +879,9 @@ window.addEventListener("appinstalled", () => {
 function 경보만들기(){
   if(!MARKET || !MARKET.indices) return [];
   const 결과 = [];
-  // 상승·하락 종목수는 키움 자료에만 있습니다. 있으면 합쳐 씁니다.
-  const 폭 = {};
-  if(KIWOOM && KIWOOM.지수){
-    for(const k of KIWOOM.지수) 폭[k.nm] = { rising:k.rising, fall:k.fall };
-  }
-  for(const x0 of MARKET.indices){
+  for(const x0 of 합친지수()){
     if(x0.nm !== "KOSPI" && x0.nm !== "KOSDAQ") continue;
-    const x = Object.assign({}, x0, 폭[x0.nm] || {});
+    const x = x0;
     const r = x.rate;
     if(r === null || r === undefined) continue;
     const a = Math.abs(r);
@@ -938,8 +970,8 @@ function baseOpts(extra){
       }
     },
     scales:{
-      x:{ grid:{ display:false }, ticks:{ font:FONT, color:"#a8a29a", maxRotation:0, autoSkipPadding:22 } },
-      y:{ grid:{ color:"#f0ede7" }, border:{ display:false }, ticks:{ font:FONT, color:"#a8a29a" } }
+      x:{ grid:{ display:false }, ticks:{ font:FONT, color:"#6f6a63", maxRotation:0, autoSkipPadding:22 } },
+      y:{ grid:{ color:"#f0ede7" }, border:{ display:false }, ticks:{ font:FONT, color:"#6f6a63" } }
     }
   }, extra||{});
 }
@@ -952,9 +984,28 @@ function drawHistory(){
     wrap.innerHTML = '<div class="nodata">아직 차트 데이터가 없습니다.<br>깃허브 자동 실행이 한 번 돌면 채워집니다.</div>';
     return;
   }
-  const ks=H["KOSPI"], kq=H["KOSDAQ"];
+  const 실시간합치기 = (name, src) => {
+    if(!src) return src;
+    const out = { d:(src.d||[]).slice(), v:(src.v||[]).slice() };
+    const live = ((KIWOOM&&KIWOOM.지수)||[]).find(x=>x.nm===name);
+    if(!live || live.price==null || !KIWOOM.asOf) return out;
+    const day = ymd(new Date(KIWOOM.asOf));
+    if(out.d[out.d.length-1] === day) out.v[out.v.length-1] = live.price;
+    else { out.d.push(day); out.v.push(live.price); }
+    return out;
+  };
+  const ks=실시간합치기("KOSPI",H["KOSPI"]), kq=실시간합치기("KOSDAQ",H["KOSDAQ"]);
   const src = ks || kq;
   if(!src){ wrap.innerHTML='<div class="nodata">지수 데이터를 찾지 못했습니다.</div>'; return; }
+  if(typeof Chart === "undefined"){
+    wrap.innerHTML='<div class="nodata">차트 프로그램을 불러오지 못했습니다. 새로고침해 주세요.</div>';
+    return;
+  }
+  if(!document.getElementById("histChart")){
+    wrap.innerHTML='<div class="chartbox"><canvas id="histChart" role="img" aria-label="코스피와 코스닥 기간별 지수 추이 차트"></canvas></div>' +
+      '<div class="legend"><span><i style="background:#c0392b"></i>코스피</span><span><i style="background:#1c6fd0"></i>코스닥</span></div>' +
+      '<div id="hlsummary" class="foot"></div><div class="foot">두 지수를 각자 첫날 기준 100으로 맞췄습니다. 국내 지수의 마지막 점은 약 5~8분 지연 자료입니다.</div>';
+  }
   const n = Math.min(period, src.d.length);
   const cut = a => a.slice(-n);
   // 첫날을 100으로 맞춰 두 지수를 겹쳐 봅니다
@@ -1021,9 +1072,9 @@ function drawHistory(){
         return ` ${c.dataset.label}  ${real!==null?real.toLocaleString("ko-KR"):c.formattedValue}` +
                `  (${c.parsed.y>=100?"+":""}${(c.parsed.y-100).toFixed(1)}%)`;
       }}}},
-      scales:{ x:{ grid:{display:false}, ticks:{ font:FONT, color:"#a8a29a", maxRotation:0, autoSkipPadding:22 } },
+      scales:{ x:{ grid:{display:false}, ticks:{ font:FONT, color:"#6f6a63", maxRotation:0, autoSkipPadding:22 } },
         y:{ grid:{color:"#f0ede7"}, border:{display:false},
-            ticks:{ font:FONT, color:"#a8a29a", callback:v=>(v-100>=0?"+":"")+(v-100).toFixed(0)+"%" } } }
+            ticks:{ font:FONT, color:"#6f6a63", callback:v=>(v-100>=0?"+":"")+(v-100).toFixed(0)+"%" } } }
     })
   });
 }
@@ -1039,11 +1090,19 @@ function drawInvestor(){
       '며칠 지나야 막대가 여러 개 보입니다.</div>';
     return;
   }
-  const d = I[invMarket];
-  if(d.d.length === 1){
-    wrap.insertAdjacentHTML("afterbegin",
-      '<div class="foot" style="margin-bottom:8px">오늘 하루치만 있습니다. 날마다 하나씩 쌓입니다.</div>');
+  if(typeof Chart === "undefined"){
+    wrap.innerHTML='<div class="nodata">차트 프로그램을 불러오지 못했습니다. 새로고침해 주세요.</div>';
+    return;
   }
+  if(!document.getElementById("invChart")){
+    wrap.innerHTML='<div id="invnote"></div><div class="chartbox"><canvas id="invChart" role="img" aria-label="외국인 기관 개인 순매수 막대 차트"></canvas></div>' +
+      '<div class="legend"><span><i style="background:#c0392b"></i>외국인</span><span><i style="background:#e0a33e"></i>기관</span><span><i style="background:#5a9bd8"></i>개인</span></div>';
+  }
+  const d = I[invMarket];
+  let note = document.getElementById("invnote");
+  if(!note){ note=document.createElement("div"); note.id="invnote"; wrap.prepend(note); }
+  note.innerHTML = d.d.length === 1
+    ? '<div class="foot" style="margin-bottom:8px">오늘 하루치만 있습니다. 날마다 하나씩 쌓입니다.</div>' : '';
   if(invChart) invChart.destroy();
   invChart = new Chart(document.getElementById("invChart"), {
     type:"bar",
@@ -1055,9 +1114,9 @@ function drawInvestor(){
     options: baseOpts({ plugins:{ legend:{display:false}, tooltip:{
       backgroundColor:"#1c1b19", padding:9, cornerRadius:7, titleFont:FONT, bodyFont:FONT,
       callbacks:{ label: c => ` ${c.dataset.label}  ${c.parsed.y>0?"+":""}${c.parsed.y.toLocaleString("ko-KR")}억` }}},
-      scales:{ x:{ grid:{display:false}, ticks:{ font:FONT, color:"#a8a29a", maxRotation:0, autoSkipPadding:18 } },
+      scales:{ x:{ grid:{display:false}, ticks:{ font:FONT, color:"#6f6a63", maxRotation:0, autoSkipPadding:18 } },
         y:{ grid:{color:"#f0ede7"}, border:{display:false},
-            ticks:{ font:FONT, color:"#a8a29a", callback:v=>v.toLocaleString("ko-KR") } } }
+            ticks:{ font:FONT, color:"#6f6a63", callback:v=>v.toLocaleString("ko-KR") } } }
     })
   });
 }
@@ -1079,15 +1138,22 @@ function restoreSegs(){
 
 /* 데이터 불러오기 — 캐시를 피해 매번 새로 받습니다 */
 async function boot(){
-  const bust = "?v=" + Date.now();
   try {
-    MARKET = await (await fetch("data/market.json" + bust)).json();
+    const r = await fetch("data/market.json", {cache:"no-store"});
+    if(!r.ok) throw new Error(`market ${r.status}`);
+    MARKET = await r.json();
   } catch(e) {
     document.getElementById("indices").innerHTML = '<div class="err">시세 파일을 불러오지 못했습니다.</div>';
+    데이터상태("시장 자료를 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 새로고침해 주세요.");
   }
-  try { BRIEFS = await (await fetch("data/briefs.json" + bust)).json(); } catch(e) { BRIEFS = {}; }
-  try { KIWOOM = await (await fetch("data/kiwoom.json" + bust)).json(); } catch(e) { KIWOOM = null; }
-  try { STOCKS = await (await fetch("data/stocks.json" + bust)).json(); } catch(e) { STOCKS = []; }
+  try { const r=await fetch("data/briefs.json",{cache:"no-store"}); if(!r.ok) throw 0; BRIEFS=await r.json(); } catch(e) { BRIEFS = {}; }
+  try { const r=await fetch("data/kiwoom.json",{cache:"no-store"}); if(!r.ok) throw 0; KIWOOM=await r.json(); } catch(e) { KIWOOM = null; }
+  try { const r=await fetch("data/stocks.json",{cache:"no-store"}); if(!r.ok) throw 0; STOCKS=await r.json(); } catch(e) { STOCKS = []; }
+  try {
+    const r=await fetch("data/collect_list.json",{cache:"no-store"});
+    if(!r.ok) throw 0;
+    수집코드 = new Set((await r.json()).map(x=>x.c));
+  } catch(e) { 수집코드 = new Set(((KIWOOM&&KIWOOM.체결강도)||[]).map(x=>x.code)); }
   // 키움에서 받은 종목 이름을 검색 목록에 합칩니다 (빠진 종목 보완)
   if(KIWOOM && KIWOOM.수급순위){
     const 있는코드 = new Set(STOCKS.map(t => t.c));
@@ -1103,14 +1169,18 @@ async function boot(){
   검색붙이기(); 고른목록그리기(); 정렬버튼붙이기(); 실시간켜기();
 
   if (MARKET) {
-    const t = new Date(MARKET.asOf);
-    document.getElementById("stamp").textContent = "마지막 갱신 " + t.toLocaleString("ko-KR");
+    const 후보 = [MARKET.asOf, KIWOOM&&KIWOOM.asOf].filter(Boolean).map(x=>new Date(x)).filter(x=>!isNaN(x));
+    const t = 후보.length ? new Date(Math.max(...후보.map(x=>x.getTime()))) : new Date(MARKET.asOf);
+    document.getElementById("stamp").textContent = "가장 최근 자료 " + t.toLocaleString("ko-KR");
+    if(Array.isArray(MARKET.stale) && MARKET.stale.length){
+      데이터상태("일부 자료는 수집에 실패해 이전 값을 유지했습니다: " + MARKET.stale.join(", "));
+    }
     const hours = (Date.now() - t.getTime()) / 3600000;
     const 주말 = t.getDay() === 0 || t.getDay() === 6;
     if (hours > 30 && !주말) {
       document.getElementById("stalebox").innerHTML =
         '<div class="stale"><b>숫자가 오래됐습니다.</b> 마지막 갱신이 ' + Math.floor(hours/24) +
-        '일 전입니다. 깃허브의 Actions 탭에서 자동 실행이 멈추지 않았는지 확인해 주세요.</div>';
+        '일 전입니다. 자동 수집 상태를 확인해 주세요.</div>';
     }
     drawMarket();
     경보그리기();
