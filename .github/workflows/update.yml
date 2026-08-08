@@ -10,6 +10,11 @@ on:
 permissions:
   contents: write
 
+# 같은 워크플로가 겹쳐 도는 것을 막습니다
+concurrency:
+  group: update
+  cancel-in-progress: false
+
 jobs:
   update:
     runs-on: ubuntu-latest
@@ -33,5 +38,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/market.json
-          git diff --staged --quiet || git commit -m "시세 갱신 $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M')"
-          git push
+          git diff --staged --quiet && exit 0
+          git commit -m "시세 갱신 $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M')"
+          # 집 PC 가 같은 시각(16:10)에 kiwoom.json 을 올리면 부딪칩니다.
+          # 먼저 받아서 얹은 뒤 올립니다. 세 번까지 다시 시도합니다.
+          for i in 1 2 3; do
+            git pull --rebase --autostash origin main && git push && exit 0
+            echo "밀렸습니다. $i 번째 다시 시도합니다."
+            sleep 10
+          done
+          echo "::error::깃허브에 올리지 못했습니다"
+          exit 1
