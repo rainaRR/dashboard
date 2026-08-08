@@ -264,6 +264,10 @@
   background:#fff4df; color:#704d00; border:1px solid #ead39f; font-size:12.5px; }
 .data-status.on { display:block; }
 .pickmsg { min-height:20px; margin-top:5px; color:#8a6100; font-size:12px; }
+.picktools { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.sharepick { flex:0 0 auto; min-height:40px; padding:7px 11px; border:1px solid #d9d5cd;
+  border-radius:8px; background:#fff; color:#4f4b45; font-size:12px; cursor:pointer; }
+.sharepick:disabled { opacity:.45; cursor:default; }
 .reload, .seg, .cal .arrow { min-height:40px; }
 .srchbox input { min-height:44px; }
 .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
@@ -358,7 +362,10 @@ button:focus-visible, input:focus-visible { outline:3px solid #8bb7ed; outline-o
       <input id="stockSearch" aria-describedby="pickmsg" placeholder="종목 검색 — 삼성전자 / 005930 / SAMSUNG / ㅅㅅㅈㅈ" autocomplete="off">
       <div class="sugg" id="sugg" style="display:none"></div>
     </div>
-    <div id="pickmsg" class="pickmsg" role="status" aria-live="polite">즐겨찾기는 최대 12개까지 담을 수 있습니다.</div>
+    <div class="picktools">
+      <div id="pickmsg" class="pickmsg" role="status" aria-live="polite">즐겨찾기는 최대 12개까지 담을 수 있습니다.</div>
+      <button id="shareWatch" class="sharepick" type="button">즐겨찾기 공유</button>
+    </div>
     <div class="picked" id="picked"></div>
     <div id="strength"><div class="loading">불러오는 중…</div></div>
     <div class="foot">체결강도는 실제로 체결된 물량 중 사자 쪽이 얼마나 셌는지를 나타냅니다.
@@ -573,7 +580,47 @@ function 고른목록그리기(){
     고른목록 = 고른목록.filter(t => t.c !== x.dataset.c);
     LS.set("watchlist", 고른목록); 고른목록그리기(); drawFlow();
   });
+  const share = document.getElementById("shareWatch");
+  if(share) share.disabled = 고른목록.length === 0;
 }
+
+function 공유목록가져오기(){
+  const url = new URL(location.href);
+  const raw = url.searchParams.get("watch");
+  if(!raw) return;
+  const codes = [...new Set(raw.split(",").map(x=>x.trim()).filter(x=>/^\d{6}$/.test(x)))].slice(0, 즐겨찾기최대);
+  if(codes.length){
+    const 종목맵 = Object.fromEntries(STOCKS.map(x=>[x.c,x]));
+    고른목록 = codes.map(c=>({c, n:(종목맵[c]&&종목맵[c].n)||c}));
+    LS.set("watchlist", 고른목록);
+    const msg = document.getElementById("pickmsg");
+    if(msg) msg.textContent = `공유받은 즐겨찾기 ${codes.length}개를 이 기기에 저장했습니다.`;
+  }
+  url.searchParams.delete("watch");
+  history.replaceState(null,"",url.pathname + (url.search ? url.search : "") + url.hash);
+}
+
+async function 즐겨찾기공유(){
+  if(!고른목록.length) return;
+  const url = new URL(location.href);
+  url.searchParams.set("tab","flow");
+  url.searchParams.set("watch",고른목록.map(x=>x.c).join(","));
+  const msg = document.getElementById("pickmsg");
+  try{
+    if(navigator.share){
+      await navigator.share({title:"내 주식 즐겨찾기",text:"이 링크를 열면 즐겨찾기가 저장됩니다.",url:url.toString()});
+      if(msg) msg.textContent = "즐겨찾기 공유 창을 열었습니다.";
+    }else{
+      await navigator.clipboard.writeText(url.toString());
+      if(msg) msg.textContent = "즐겨찾기 링크를 복사했습니다. 휴대폰으로 보내서 여세요.";
+    }
+  }catch(e){
+    if(e && e.name === "AbortError") return;
+    if(msg) msg.textContent = "공유하지 못했습니다. 새로고침한 뒤 다시 눌러 주세요.";
+  }
+}
+
+document.getElementById("shareWatch").onclick = 즐겨찾기공유;
 
 function 검색붙이기(){
   const inp = document.getElementById("stockSearch");
@@ -1189,7 +1236,7 @@ async function boot(){
       }
     }
   }
-  검색붙이기(); 고른목록그리기(); 정렬버튼붙이기(); 실시간켜기();
+  공유목록가져오기(); 검색붙이기(); 고른목록그리기(); 정렬버튼붙이기(); 실시간켜기();
 
   if (MARKET) {
     const 후보 = [MARKET.asOf, KIWOOM&&KIWOOM.asOf].filter(Boolean).map(x=>new Date(x)).filter(x=>!isNaN(x));
