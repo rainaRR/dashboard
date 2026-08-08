@@ -1,0 +1,13 @@
+# 비밀정보와 접속키
+설정.txt
+**/설정.txt
+*.key
+*.pem
+.env
+.env.*
+token-cache.json
+
+# 임시 파일
+*.tmp
+__pycache__/
+*.pyc
