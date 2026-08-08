@@ -1,5 +1,5 @@
 /* 서비스 워커 — 앱처럼 설치되게 하고, 인터넷이 없을 때도 마지막 화면을 보여줍니다. */
-const VERSION = "v4";
+const VERSION = "v5";
 const SHELL = "shell-" + VERSION;   // 화면 틀 (오래 보관)
 const DATA  = "data-" + VERSION;    // 숫자 (항상 새로 받되, 실패하면 보관본 사용)
 
