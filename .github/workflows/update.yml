@@ -27,11 +27,14 @@ jobs:
           python-version: "3.11"
 
       - name: 라이브러리 설치
-        run: pip install finance-datareader yfinance pykrx
+        run: pip install --disable-pip-version-check -r requirements.txt
 
       - name: 시세 가져오기
         timeout-minutes: 10
         run: python fetch_data.py
+
+      - name: 공개 파일 자동 검사
+        run: npm test
 
       - name: 결과 저장
         run: |

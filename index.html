@@ -343,7 +343,7 @@ button:focus-visible, input:focus-visible { outline:3px solid #8bb7ed; outline-o
         <span><i style="background:#8fa9cc"></i>52주 전저점</span>
       </div>
       <div id="hlsummary" class="foot"></div>
-      <div class="foot">두 지수를 각자 첫날 기준 100으로 맞췄습니다. 국내 지수의 마지막 점은 키움 기준 약 5~8분 지연 자료입니다.</div></div>
+      <div class="foot">두 지수를 각자 첫날 기준 100으로 맞췄습니다. <b>참고 : 장중 약 5~8분 지연</b></div></div>
   </div>
 
 </section>
@@ -388,6 +388,7 @@ button:focus-visible, input:focus-visible { outline:3px solid #8bb7ed; outline-o
       <button class="arrow" id="wnext" type="button" aria-label="다음 주">▶</button>
     </div>
     <div class="calnote" id="calnote"></div>
+    <div id="paperAutoStatus"></div>
     <div id="paperbody"><div class="loading">불러오는 중…</div></div>
     <div class="foot">신문 기사를 정리한 것이며 투자 권유가 아닙니다.</div>
   </div>
@@ -418,7 +419,7 @@ function 데이터상태(msg){
   el.classList.toggle("on", Boolean(msg));
 }
 
-let MARKET=null, BRIEFS={};
+let MARKET=null, BRIEFS={}, AUTOMATION_STATUS=null;
 
 document.querySelectorAll("#nav button").forEach(b=>{
   b.onclick=()=>{
@@ -472,7 +473,7 @@ function drawMarket(){
     ${x.adv!==undefined?breadthBar(x.adv,x.unch,x.dec):'<div class="barlbl" style="color:#c4bfb6">상승/하락 종목 수 미제공</div>'}
     ${rangeBar(x)}</div>`).join("");
   document.getElementById("idxfoot").textContent =
-    "국내 지수는 키움 약 5~8분 지연 · 해외 지수는 Yahoo Finance 종가 · " +
+    "참고 : 국내 지수는 장중 약 5~8분 지연 · 해외 지수는 Yahoo Finance 종가 · " +
     ((KIWOOM&&KIWOOM.asOf) ? new Date(KIWOOM.asOf).toLocaleString("ko-KR") : (MARKET.indices[0]||{}).asOf);
 
   const fg=document.getElementById("fg");
@@ -677,7 +678,7 @@ function 실시간켜기(){
   const tag = document.getElementById("liveTag");
   if(실시간타이머) clearInterval(실시간타이머);
   if(!장중인가()){ if(tag) tag.innerHTML = ""; return; }
-  if(tag) tag.innerHTML = '<span class="tag red"><span class="livedot"></span>약 5~8분 지연</span>';
+  if(tag) tag.innerHTML = '<span class="tag red"><span class="livedot"></span>참고 : 장중 약 5~8분 지연</span>';
   실시간타이머 = setInterval(async () => {
     if(!장중인가()){ clearInterval(실시간타이머); if(tag) tag.innerHTML=""; return; }
     await 새수급받기();
@@ -888,6 +889,23 @@ function renderPaper(){
       <ul class="sched">${B.sched.map(s=>`<li><b>${safe(s[0])}</b><span>${safe(s[1])}</span></li>`).join("")}</ul></div>`;
   document.querySelectorAll(".theme").forEach(el=>el.querySelector(".thead").onclick=()=>el.classList.toggle("open"));
 }
+
+function renderPaperAutomationStatus(){
+  const el=document.getElementById("paperAutoStatus");
+  if(!el) return;
+  const S=AUTOMATION_STATUS;
+  if(!S){ el.innerHTML=""; return; }
+  const when=S.updatedAt ? new Date(S.updatedAt).toLocaleString("ko-KR") : "시각 없음";
+  if(S.mode==="fallback"){
+    el.innerHTML=`<div class="stale"><b>운영자 확인 필요</b> 무료 AI 한도를 초과해 오라클 내부 분석으로 자동 전환했습니다. <span class="foot">${safe(when)}</span></div>`;
+  }else if(S.mode==="error"){
+    el.innerHTML=`<div class="err"><b>신문 자동화 오류</b> ${safe(S.message||"운영자가 확인하고 있습니다.")} · ${safe(when)}</div>`;
+  }else if(S.mode==="gemini"){
+    el.innerHTML=`<div class="calnote">신문 자동 분석 정상 · 무료 AI 사용 · ${safe(when)}</div>`;
+  }else{
+    el.innerHTML=`<div class="calnote">신문 자동화 대기 중 · ${safe(when)}</div>`;
+  }
+}
 document.getElementById("wprev").onclick=()=>{weekStart.setDate(weekStart.getDate()-7);renderCal();};
 document.getElementById("wnext").onclick=()=>{weekStart.setDate(weekStart.getDate()+7);renderCal();};
 
@@ -1074,7 +1092,7 @@ function drawHistory(){
   if(!document.getElementById("histChart")){
     wrap.innerHTML='<div class="chartbox"><canvas id="histChart" role="img" aria-label="코스피와 코스닥 기간별 지수 추이 차트"></canvas></div>' +
       '<div class="legend"><span><i style="background:#c0392b"></i>코스피</span><span><i style="background:#1c6fd0"></i>코스닥</span></div>' +
-      '<div id="hlsummary" class="foot"></div><div class="foot">두 지수를 각자 첫날 기준 100으로 맞췄습니다. 국내 지수의 마지막 점은 약 5~8분 지연 자료입니다.</div>';
+      '<div id="hlsummary" class="foot"></div><div class="foot">두 지수를 각자 첫날 기준 100으로 맞췄습니다. <b>참고 : 장중 약 5~8분 지연</b></div>';
   }
   const n = Math.min(period, src.d.length);
   const cut = a => a.slice(-n);
@@ -1217,6 +1235,7 @@ async function boot(){
     데이터상태("시장 자료를 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 새로고침해 주세요.");
   }
   try { const r=await fetch("data/briefs.json",{cache:"no-store"}); if(!r.ok) throw 0; BRIEFS=await r.json(); } catch(e) { BRIEFS = {}; }
+  try { const r=await fetch("data/automation_status.json",{cache:"no-store"}); if(!r.ok) throw 0; AUTOMATION_STATUS=await r.json(); } catch(e) { AUTOMATION_STATUS = null; }
   try { const r=await fetch("data/kiwoom.json",{cache:"no-store"}); if(!r.ok) throw 0; KIWOOM=await r.json(); } catch(e) { KIWOOM = null; }
   try { const r=await fetch("data/stocks.json",{cache:"no-store"}); if(!r.ok) throw 0; STOCKS=await r.json(); } catch(e) { STOCKS = []; }
   try {
@@ -1267,7 +1286,7 @@ async function boot(){
     selDate = ymd(new Date());
   }
   weekStart = mondayOf(new Date(selDate + "T00:00:00"));
-  renderCal(); renderPaper();
+  renderCal(); renderPaperAutomationStatus(); renderPaper();
 }
 boot();
 </script>

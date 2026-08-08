@@ -5,11 +5,11 @@ const read = p => fs.readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
 const fail = msg => { console.error(`[실패] ${msg}`); process.exitCode = 1; };
 const ok = msg => console.log(`[확인] ${msg}`);
 
-for (const file of ["index.html", "sw.js", "manifest.json", "vercel.json", "data/market.json", "data/kiwoom.json", "data/briefs.json", "data/stocks.json", "data/collect_list.json", "vendor/chart.umd.js"]) {
+for (const file of ["index.html", "sw.js", "manifest.json", "vercel.json", "data/market.json", "data/kiwoom.json", "data/briefs.json", "data/stocks.json", "data/collect_list.json", "data/automation_status.json", "vendor/chart.umd.js"]) {
   try { read(file); ok(`${file} 있음`); } catch { fail(`${file} 없음`); }
 }
 
-for (const file of ["manifest.json", "vercel.json", "data/market.json", "data/kiwoom.json", "data/briefs.json", "data/stocks.json", "data/collect_list.json"]) {
+for (const file of ["manifest.json", "vercel.json", "data/market.json", "data/kiwoom.json", "data/briefs.json", "data/stocks.json", "data/collect_list.json", "data/automation_status.json"]) {
   try { JSON.parse(read(file)); ok(`${file} JSON 정상`); } catch (e) { fail(`${file} JSON 오류: ${e.message}`); }
 }
 
