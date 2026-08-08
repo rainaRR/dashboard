@@ -328,17 +328,21 @@ def main():
     investor= guarded(fetch_investor,   120, "투자자별 매매", None)
     cnn     = guarded(fetch_cnn_fng,     40, "CNN 공포탐욕지수", None)
 
-    # 하나라도 실패하면 지난번 값을 그대로 둡니다. 빈 화면을 보여주지 않기 위해서입니다.
+    # 일부 지수만 실패해도 필수 5개가 빠지지 않도록 종목별로 지난 값을 보완합니다.
     물려받음 = []          # 무엇을 지난번 값으로 때웠는지 기록합니다
-
-    if not kr and prev.get("indices"):
-        kr = [x for x in prev["indices"] if x["nm"] in ("KOSPI", "KOSDAQ")]
-        note("[대체] 국내 지수는 지난번 값을 유지합니다")
-        물려받음.append("국내 지수")
-    if not us and prev.get("indices"):
-        us = [x for x in prev["indices"] if x["nm"] not in ("KOSPI", "KOSDAQ")]
-        note("[대체] 해외 지수는 지난번 값을 유지합니다")
-        물려받음.append("해외 지수")
+    필수지수 = ("KOSPI", "KOSDAQ", "S&P 500", "NASDAQ", "DOW")
+    현재지수 = {x.get("nm"): x for x in (kr + us) if x.get("nm")}
+    이전지수 = {x.get("nm"): x for x in prev.get("indices", []) if x.get("nm")}
+    for 이름 in 필수지수:
+        if 이름 not in 현재지수 and 이름 in 이전지수:
+            현재지수[이름] = 이전지수[이름]
+            물려받음.append(f"지수 {이름}")
+            note(f"[대체] {이름}은 지난번 값을 유지합니다")
+    빠진지수 = [이름 for 이름 in 필수지수 if 이름 not in 현재지수]
+    if 빠진지수:
+        raise RuntimeError("필수 지수 누락: " + ", ".join(빠진지수))
+    kr = [현재지수[x] for x in 필수지수[:2]]
+    us = [현재지수[x] for x in 필수지수[2:]]
     if not stocks and prev.get("stocks"):
         stocks = prev["stocks"]
         note("[대체] 종목 시세는 지난번 값을 유지합니다")
@@ -354,14 +358,9 @@ def main():
         note("[대체] CNN 지수는 지난번 값을 유지합니다")
         물려받음.append("공포탐욕지수")
 
-    # 지수나 시세를 못 받아 지난번 값을 그대로 쓴 경우,
-    # 갱신 시각을 '지금'으로 찍으면 화면이 "방금 받은 최신 숫자"인 척하게 됩니다.
-    # 그러면 화면의 "오래됐습니다" 경고가 영영 안 뜹니다. 그래서 옛 시각을 그대로 둡니다.
-    if 물려받음 and prev.get("asOf"):
-        받은시각 = prev["asOf"]
-        note(f"[주의] {', '.join(물려받음)} 을(를) 못 받아 갱신 시각을 옛것으로 둡니다: {받은시각}")
-    else:
-        받은시각 = datetime.datetime.now(KST).isoformat(timespec="seconds")
+    # 파일을 만든 시각과 오래된 항목 목록을 분리합니다. 각 지수·CNN의 실제 기준일은
+    # 항목 안의 asOf에 그대로 남으므로 일부 실패가 전체 갱신시각을 왜곡하지 않습니다.
+    받은시각 = datetime.datetime.now(KST).isoformat(timespec="seconds")
 
     data = {
         "asOf": 받은시각,
@@ -377,14 +376,18 @@ def main():
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     # allow_nan=False — 숫자 하나가 NaN 이면 브라우저가 파일 전체를 못 읽어
     # 대시보드가 백지가 됩니다. 여기서 미리 걸러 냅니다.
-    json.dump(data, open(OUT, "w", encoding="utf-8"),
-              ensure_ascii=False, indent=1, allow_nan=False)
+    임시파일 = OUT + ".tmp"
+    with open(임시파일, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=1, allow_nan=False)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(임시파일, OUT)
     note(f"[완료] 저장 · 지수 {len(data['indices'])}개 · 종목 {len(stocks)}개 · "
          f"차트 {len(history or {})}개 · 투자자 {len(investor or {})}개 · "
          f"CNN {'있음' if cnn else '없음'}")
 
-    if not data["indices"]:
-        note("[경고] 지수를 하나도 못 가져왔습니다")
+    if len(data["indices"]) != 5:
+        note("[경고] 필수 지수 5개가 모두 있지 않습니다")
         sys.exit(1)
 
 
