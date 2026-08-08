@@ -902,6 +902,8 @@ function renderPaperAutomationStatus(){
     el.innerHTML=`<div class="err"><b>신문 자동화 오류</b> ${safe(S.message||"운영자가 확인하고 있습니다.")} · ${safe(when)}</div>`;
   }else if(S.mode==="gemini"){
     el.innerHTML=`<div class="calnote">신문 자동 분석 정상 · 무료 AI 사용 · ${safe(when)}</div>`;
+  }else if(S.mode==="ready"){
+    el.innerHTML=`<div class="calnote">신문 자동화 준비 완료 · 매일 06:30~08:00 사이 30분 간격 확인 · ${safe(when)}</div>`;
   }else{
     el.innerHTML=`<div class="calnote">신문 자동화 대기 중 · ${safe(when)}</div>`;
   }
