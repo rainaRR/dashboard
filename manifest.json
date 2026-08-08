@@ -18,7 +18,7 @@
     { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "shortcuts": [
-    { "name": "차트", "short_name": "차트", "url": "./?tab=chart",
+    { "name": "지수", "short_name": "지수", "url": "./?tab=chart",
       "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
     { "name": "신문 브리핑", "short_name": "신문", "url": "./?tab=paper",
       "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
