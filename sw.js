@@ -1,5 +1,5 @@
 /* 서비스 워커 — 앱처럼 설치되게 하고, 인터넷이 없을 때도 마지막 화면을 보여줍니다. */
-const VERSION = "v5";
+const VERSION = "v6";
 const SHELL = "shell-" + VERSION;   // 화면 틀 (오래 보관)
 const DATA  = "data-" + VERSION;    // 숫자 (항상 새로 받되, 실패하면 보관본 사용)
 
@@ -7,6 +7,7 @@ const SHELL_FILES = [
   "./",
   "./index.html",
   "./manifest.json",
+  "./vendor/chart.umd.js",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
 ];
@@ -15,7 +16,6 @@ self.addEventListener("install", e => {
   e.waitUntil(
     caches.open(SHELL)
       .then(c => c.addAll(SHELL_FILES))
-      .catch(() => {})          // 파일 하나가 없어도 설치는 진행합니다
       .then(() => self.skipWaiting())
   );
 });
@@ -44,14 +44,17 @@ self.addEventListener("fetch", e => {
 
   // 숫자 파일 — 항상 새것을 먼저 시도하고, 안 되면 보관본을 씁니다
   if (url.pathname.includes("/data/")) {
+    // ?v=시간 같은 검색값은 버리고 파일별로 한 개만 보관합니다.
+    const canonical = new Request(url.origin + url.pathname, { method:"GET" });
     e.respondWith(
       fetch(req)
         .then(res => {
+          if(!res.ok) throw new Error(`HTTP ${res.status}`);
           const copy = res.clone();
-          caches.open(DATA).then(c => c.put(req, copy));
+          caches.open(DATA).then(c => c.put(canonical, copy));
           return res;
         })
-        .catch(() => caches.match(req).then(r => r || Response.error()))
+        .catch(() => caches.match(canonical).then(r => r || Response.error()))
     );
     return;
   }
@@ -71,7 +74,7 @@ self.addEventListener("fetch", e => {
           caches.open(SHELL).then(c => c.put(req, copy));
           return res;
         })
-        .catch(() => caches.match(req))      // 인터넷이 없을 때만 보관본
+        .catch(() => caches.match(url.pathname === "/" ? "./" : req))      // 인터넷이 없을 때만 보관본
     );
     return;
   }
